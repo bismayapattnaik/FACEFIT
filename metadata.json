@@ -1,0 +1,7 @@
+{
+  "name": "FaceFit",
+  "description": "A futuristic virtual try-on application using Gemini Nano Pro to instantly visualize fashion items on yourself. Tailored for the modern fashion ecosystem.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
