@@ -41,39 +41,40 @@ export const generateTryOnImage = async (
       console.log(`Attempting generation with model: ${modelName}`);
       
       const promptText = `
-      ACT AS A WORLD-CLASS FASHION PHOTOGRAPHER AND VFX COMPOSITOR.
-
-      TASK: Create a hyper-realistic full-body fashion editorial image.
-
-      INPUTS:
-      1. FACE: The user's exact facial features, skin texture, and hair (from Input 1).
-      2. CLOTH: The garment to be worn (from Input 2).
-
-      STRICT REALISM & GENERATION RULES:
-      1. **IDENTITY PRESERVATION (PRIORITY #1)**: 
-         - The face MUST be an exact match to Input 1. Preserve identity, age, and ethnicity 100%. 
-         - Skin texture must show natural pores and subsurface scattering. No plastic/waxy skin.
-
-      2. **BODY & POSE**: 
-         - Generate a completely NEW, anatomically perfect fashion model body that fits the head naturally.
-         - Pose: Relaxed, natural, high-fashion stance (e.g., casual walk, hand in pocket, slight lean). Avoid stiffness.
-         - Proportions: realistic human proportions, not stylized or cartoonish.
-
-      3. **CLOTHING & TEXTURE PHYSICS**:
-         - The model MUST wear the exact cloth from Input 2.
-         - **Fabric Simulation**: The fabric must drape realistically over the body, showing weight, tension folds, and wrinkles appropriate for the material (e.g., stiff denim vs. soft cotton).
-         - **Texture**: Retain all fine details (stitching, logos, weave).
-         - **Outfit Completion**: If Input 2 is a top, generating matching bottoms (Jeans, Chinos, Trousers) that complement the style. If it's a dress, add appropriate footwear.
-
-      4. **LIGHTING & SHADOWS**:
-         - Use cinematic, soft-box studio lighting or natural golden hour light.
-         - **Shadow Integration**: Ensure complex self-shadowing (cloth casting shadows on skin, arm casting shadow on body). 
-         - Global illumination: Light must bounce naturally off the fabric onto the skin.
-
-      5. **ENVIRONMENT**: 
-         - Background: Soft-focus (bokeh) modern urban street, luxury boutique interior, or minimal architectural studio.
+      ACT AS AN EXPERT VFX ARTIST AND HIGH-FASHION PHOTOGRAPHER.
       
-      OUTPUT: A raw, 8k resolution, photorealistic photograph.
+      TASK: Perform a photorealistic VIRTUAL TRY-ON.
+      
+      INPUTS:
+      - IMAGE A (Face): The user's face and head.
+      - IMAGE B (Garment/Item): The fashion item to be worn.
+      
+      EXECUTION PIPELINE:
+      1. **IDENTITY RECONSTRUCTION (CRITICAL)**: 
+         - Reconstruct the user's face from IMAGE A with 100% fidelity. 
+         - PRESERVE: Eye shape, nose, mouth, jawline, skin tone, facial hair, and hair texture.
+         - The face MUST look exactly like the person in IMAGE A.
+      
+      2. **VIRTUAL TAILORING & PHYSICS**:
+         - Fit the Garment from IMAGE B onto a generated body that matches the user's head size and skin tone.
+         - **PHYSICS ENGINE**: The cloth must WRAP around the body volumes (chest, shoulders, arms). It cannot look flat.
+         - **WEIGHT & DRAPE**: If the cloth is heavy (jacket/coat), show stiffness and volume. If light (t-shirt/silk), show natural draping and gravity.
+         - **CONTACT POINTS**: The collar/neckline must touch the skin naturally. No visible gaps or "floating" pixels between cloth and skin.
+      
+      3. **OUTFIT COMPLETION (SMART STYLING)**:
+         - **Identify the Item Type in IMAGE B**:
+           - If TOP (Shirt, Jacket, Hoodie): You MUST generate matching bottoms (e.g., denim jeans, chinos, cargo pants) and shoes to complete the look.
+           - If BOTTOM (Pants, Skirt): Generate a matching neutral or stylish top and shoes.
+           - If FOOTWEAR: Generate a full outfit that highlights the shoes.
+           - If ACCESSORY (Bag, Hat, Jewelry): Generate a full outfit that suits the accessory.
+         - **Color Coordination**: Ensure the generated items color-match the input item.
+      
+      4. **PHOTOREALISTIC INTEGRATION**:
+         - **LIGHTING MATCH**: The lighting on the cloth MUST match the lighting on the face.
+         - **AMBIENT OCCLUSION**: Cast realistic shadows from the cloth onto the skin (e.g., collar shadow on neck, sleeve shadow on arm).
+         - **TEXTURE**: Keep the high-frequency details of the cloth (fabric weave, stitching, logos).
+      
+      OUTPUT: A 4K, RAW-style photograph. No AI gloss. No cartoon effects. The user must look like they are physically standing there wearing the item.
       `;
 
       const response = await ai.models.generateContent({
@@ -150,9 +151,9 @@ export const getStyleRecommendations = async (
         parts: [
           { 
             text: `You are a fashion stylist. 
-            1. Analyze this clothing item.
-            2. Suggest a specific pair of PANTS/BOTTOMS that would match this item perfectly for a modern look.
-            3. Provide a search query I can use on Google Shopping to find these specific pants.
+            1. Analyze this fashion item (it could be a shirt, pants, shoes, or accessory).
+            2. Based on what it is, suggest ONE specific COMPLEMENTARY item to complete the look (e.g., if it's a shirt, suggest pants; if pants, suggest a shirt).
+            3. Provide a search query I can use on Google Shopping to find this complementary item.
             
             Return JSON.`
           },
@@ -164,12 +165,12 @@ export const getStyleRecommendations = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            analysis: { type: Type.STRING, description: "Brief thought on the vibe of the cloth" },
+            analysis: { type: Type.STRING, description: "Brief analysis of the item" },
             complementaryItem: {
               type: Type.OBJECT,
               properties: {
-                name: { type: Type.STRING, description: "Name of the suggested pants (e.g. Beige Cargo Pants)" },
-                searchQuery: { type: Type.STRING, description: "Search query for shopping (e.g. men beige cargo pants slim fit)" },
+                name: { type: Type.STRING, description: "Name of the suggested item" },
+                searchQuery: { type: Type.STRING, description: "Shopping search query" },
                 priceRange: { type: Type.STRING, description: "Estimated price range in INR" }
               }
             },
