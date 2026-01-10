@@ -34,4 +34,9 @@ export interface StyleRecommendation {
     reason: string;
     color: string;
   }[];
+  complementaryItem?: {
+    name: string;
+    searchQuery: string;
+    priceRange: string;
+  };
 }
