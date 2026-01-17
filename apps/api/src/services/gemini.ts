@@ -5,9 +5,9 @@ import type { TryOnMode } from '@mirrorx/shared';
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // Model IDs (configurable via environment)
-const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
-const FALLBACK_IMAGE_MODEL = 'gemini-2.5-flash-image';
+const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.0-flash';
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.0-flash-exp-image-generation';
+const FALLBACK_IMAGE_MODEL = 'gemini-1.5-flash';
 
 // Expert prompt for photorealistic try-on
 const TRYON_PROMPT = `You are an expert virtual fashion try-on system specializing in photorealistic garment visualization for Indian fashion e-commerce.
