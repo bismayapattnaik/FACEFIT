@@ -1,49 +1,23 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { TryOnMode } from '@mirrorx/shared';
 
 // Initialize Gemini client
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-// Model IDs (configurable via environment)
-const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.0-flash';
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.0-flash-exp-image-generation';
-const FALLBACK_IMAGE_MODEL = 'gemini-1.5-flash';
+// Model IDs
+const IMAGE_MODEL = 'gemini-2.0-flash-exp';
+const TEXT_MODEL = 'gemini-1.5-flash';
 
 // Expert prompt for photorealistic try-on
-const TRYON_PROMPT = `You are an expert virtual fashion try-on system specializing in photorealistic garment visualization for Indian fashion e-commerce.
+const TRYON_PROMPT = `You are an expert virtual fashion try-on system. Generate a realistic image of the person in the first image wearing the clothing item shown in the second image.
 
-TASK: Generate a highly realistic image of the person wearing the provided garment.
+REQUIREMENTS:
+1. Keep the person's face and body exactly the same
+2. Only change their clothing to match the product image
+3. Make it look natural and realistic
+4. Maintain proper lighting and shadows
 
-CRITICAL REQUIREMENTS:
-1. IDENTITY PRESERVATION (HIGHEST PRIORITY):
-   - Maintain exact facial features: face shape, eyes, nose, lips, skin tone
-   - Preserve any unique characteristics: birthmarks, facial hair, expressions
-   - The result must be unmistakably the same person
-
-2. GARMENT FITTING:
-   - Realistically drape the garment on the person's body
-   - Apply physics-based cloth simulation for natural fabric behavior
-   - Respect the garment's original style, color, pattern, and texture
-
-3. OUTFIT COMPLETION (for FULL_FIT mode):
-   - If only upper garment provided, intelligently suggest matching bottoms
-   - If only lower garment provided, suggest appropriate upper wear
-   - Add complementary footwear when applicable
-   - Ensure the complete outfit is cohesive and fashion-forward
-
-4. LIGHTING & ENVIRONMENT:
-   - Match lighting direction, intensity, and color temperature from source image
-   - Create consistent shadows and highlights on the garment
-   - Maintain the original background or create a neutral studio environment
-
-5. QUALITY STANDARDS:
-   - Ultra-high resolution output (minimum 1024x1024)
-   - No visible artifacts, seams, or AI-generated distortions
-   - Professional fashion photography aesthetic
-
-MODE: {mode}
-- PART: Focus on the specific garment, minimal changes to other clothing
-- FULL_FIT: Create a complete, styled outfit look`;
+Generate the image now.`;
 
 interface GenerationResult {
   image: string;
@@ -56,101 +30,76 @@ export async function generateTryOnImage(
   productBase64: string,
   mode: TryOnMode = 'PART'
 ): Promise<string> {
-  const prompt = TRYON_PROMPT.replace('{mode}', mode);
-
-  // Prepare image parts
-  const parts: any[] = [
-    { text: prompt },
-    {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: selfieBase64.replace(/^data:image\/\w+;base64,/, ''),
-      },
-    },
-  ];
-
-  if (productBase64) {
-    parts.push({
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: productBase64.replace(/^data:image\/\w+;base64,/, ''),
-      },
-    });
-  }
-
-  // Try primary model first
-  let result = await attemptGeneration(IMAGE_MODEL, parts);
-
-  // Fallback to secondary model if primary fails
-  if (!result.success) {
-    console.warn(`Primary model failed, trying fallback: ${result.error}`);
-    result = await attemptGeneration(FALLBACK_IMAGE_MODEL, parts);
-  }
-
-  if (!result.success) {
-    throw new Error(result.error || 'Image generation failed');
-  }
-
-  return result.image;
-}
-
-async function attemptGeneration(modelId: string, parts: any[]): Promise<GenerationResult> {
   try {
     const model = genAI.getGenerativeModel({
-      model: modelId,
-      generationConfig: {
-        temperature: 0.4,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-      },
+      model: IMAGE_MODEL,
     });
 
-    const response = await model.generateContent(parts);
-    const candidate = response.response.candidates?.[0];
+    // Clean base64 strings
+    const cleanSelfie = selfieBase64.replace(/^data:image\/\w+;base64,/, '');
+    const cleanProduct = productBase64.replace(/^data:image\/\w+;base64,/, '');
 
-    if (!candidate?.content?.parts) {
-      return {
-        success: false,
-        image: '',
-        error: 'No content generated',
-      };
+    const prompt = mode === 'FULL_FIT'
+      ? `${TRYON_PROMPT} Create a complete outfit look.`
+      : TRYON_PROMPT;
+
+    const result = await model.generateContent([
+      { text: prompt },
+      {
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: cleanSelfie,
+        },
+      },
+      {
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: cleanProduct,
+        },
+      },
+    ]);
+
+    const response = result.response;
+    const candidates = response.candidates;
+
+    if (!candidates || candidates.length === 0) {
+      throw new Error('No response from AI model');
     }
 
-    // Find image in response parts
-    for (const part of candidate.content.parts) {
-      if (part.inlineData?.mimeType?.startsWith('image/')) {
-        return {
-          success: true,
-          image: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-        };
+    // Check for image in response
+    for (const part of candidates[0].content.parts) {
+      if ((part as any).inlineData?.mimeType?.startsWith('image/')) {
+        const inlineData = (part as any).inlineData;
+        return `data:${inlineData.mimeType};base64,${inlineData.data}`;
       }
     }
 
-    return {
-      success: false,
-      image: '',
-      error: 'No image in response',
-    };
+    // If no image, the model might have returned text instead
+    // For now, return an error - we need image output
+    const text = response.text();
+    console.log('Model returned text instead of image:', text.substring(0, 200));
+
+    throw new Error('Model did not generate an image. Virtual try-on requires image generation capability.');
+
   } catch (error) {
+    console.error('Gemini generation error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return {
-      success: false,
-      image: '',
-      error: message,
-    };
+    throw new Error(`Image generation failed: ${message}`);
   }
 }
 
-// Style recommendations
+// Style recommendations using text model
 export async function getStyleRecommendations(productBase64: string): Promise<{
   analysis: string;
   suggestions: string[];
   complementaryItems: Array<{ type: string; description: string; priceRange: string }>;
 }> {
-  const model = genAI.getGenerativeModel({ model: TEXT_MODEL });
+  try {
+    const model = genAI.getGenerativeModel({ model: TEXT_MODEL });
 
-  const prompt = `Analyze this fashion item and provide styling recommendations for Indian consumers.
+    const cleanProduct = productBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    const prompt = `Analyze this fashion item and provide styling recommendations for Indian consumers.
 
 Return a JSON object with:
 - "analysis": Brief description of the item (type, style, color, material)
@@ -160,20 +109,19 @@ Return a JSON object with:
   - "description": Specific recommendation
   - "priceRange": Estimated price in INR (e.g., "₹1,500 - ₹3,000")
 
-Focus on Indian fashion sensibilities and practical styling advice.`;
+Focus on Indian fashion sensibilities and practical styling advice. Return ONLY the JSON object, no other text.`;
 
-  try {
-    const response = await model.generateContent([
+    const result = await model.generateContent([
       { text: prompt },
       {
         inlineData: {
           mimeType: 'image/jpeg',
-          data: productBase64.replace(/^data:image\/\w+;base64,/, ''),
+          data: cleanProduct,
         },
       },
     ]);
 
-    const text = response.response.text();
+    const text = result.response.text();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (jsonMatch) {
