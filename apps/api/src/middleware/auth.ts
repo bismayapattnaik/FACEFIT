@@ -170,17 +170,11 @@ export async function authenticate(
       );
 
       if (emailResult.rows.length > 0) {
-        // User exists with different ID, update their ID to match Supabase
-        await query(
-          `UPDATE users SET id = $1 WHERE email = $2`,
-          [userId!, email]
-        );
-        result = await query<User>(
-          `SELECT id, email, name, phone, avatar_url, google_id, credits_balance,
-                  subscription_tier, email_verified, created_at, updated_at
-           FROM users WHERE id = $1`,
-          [userId!]
-        );
+        // User exists with different ID - just use the existing user
+        // Don't try to update the ID as it may have foreign key references
+        result = emailResult;
+        // Use the existing database user ID, not the Supabase ID
+        userId = emailResult.rows[0].id;
       } else {
         // Create new user from Supabase auth
         const name = userMetadata?.name || userMetadata?.full_name || email.split('@')[0];
