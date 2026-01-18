@@ -16,6 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@google/genai": "^1.37.0",
     "@google/generative-ai": "^0.21.0",
     "@mirrorx/shared": "workspace:*",
     "axios": "^1.7.9",

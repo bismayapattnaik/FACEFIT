@@ -184,13 +184,13 @@ router.post(
             ...item,
             stores: INDIAN_STORES.map(store => ({
               name: store.name,
-              url: `${store.url}${encodeURIComponent(item.description)}`,
+              url: `${store.url}${encodeURIComponent((item as any).searchQuery || item.description)}`,
             })),
           }));
 
           outfitSuggestions = {
             analysis: styleRecs.analysis,
-            stylingTips: styleRecs.suggestions,
+            stylingTips: styleRecs.stylingTips || (styleRecs as any).suggestions || [],
             complementaryItems: buyLinks,
           };
         } catch (recError) {
