@@ -80,6 +80,9 @@ importers:
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
       uuid:
         specifier: ^11.0.3
         version: 11.1.0
@@ -114,9 +117,6 @@ importers:
       supertest:
         specifier: ^7.0.0
         version: 7.2.2
-      tsx:
-        specifier: ^4.19.2
-        version: 4.21.0
       typescript:
         specifier: ~5.8.2
         version: 5.8.3
