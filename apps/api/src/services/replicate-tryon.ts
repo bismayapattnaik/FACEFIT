@@ -5,123 +5,111 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || '',
 });
 
-// IDM-VTON model for virtual try-on with perfect face preservation
-const VTON_MODEL = 'cuuupid/idm-vton:c871bb9b046c1c045725e293bfe1e5847ae29f8d0bfc76b6bd32ed0dd89bf5eb';
+// Using fashn-ai tryon model - actively maintained and reliable
+const FASHN_TRYON_MODEL = 'fashn-ai/tryon:9725fffb6fc8dfd9f0c58a37fee85c3b0e3f5eeefbdbcb9a450b6db4a22aa32d';
 
-// Kolors Virtual Try-On as backup
-const KOLORS_VTON_MODEL = 'camenduru/kolors-virtual-try-on:c1a02d4c87e4a55ea5289aa4e86c6f7f2af0c77dd6de5df7be45f56f1a044b75';
+// IDM-VTON model as backup
+const IDM_VTON_MODEL = 'cuuupid/idm-vton:c871bb9b046c1c045725e293bfe1e5847ae29f8d0bfc76b6bd32ed0dd89bf5eb';
 
-type Gender = 'male' | 'female';
-type Category = 'upper_body' | 'lower_body' | 'dresses';
+type Category = 'tops' | 'bottoms' | 'one-pieces';
 
-interface TryOnResult {
-  image: string;
-  success: boolean;
-  error?: string;
+/**
+ * Convert base64 to data URI
+ */
+function toDataUri(base64: string): string {
+  // If already a URL or data URI, return as-is
+  if (base64.startsWith('http://') || base64.startsWith('https://') || base64.startsWith('data:')) {
+    return base64;
+  }
+  // Convert raw base64 to data URI
+  return `data:image/jpeg;base64,${base64}`;
 }
 
 /**
- * Generate virtual try-on using IDM-VTON model
+ * Generate virtual try-on using fashn-ai model
  * This model preserves the exact face from the input image
  */
-export async function generateTryOnWithReplicate(
-  personImageUrl: string,
-  garmentImageUrl: string,
-  category: Category = 'upper_body'
+export async function generateTryOnWithFashn(
+  personImage: string,
+  garmentImage: string,
+  category: Category = 'tops'
 ): Promise<string> {
-  try {
-    console.log('Starting IDM-VTON generation...');
+  console.log('Starting fashn-ai tryon generation...');
+  console.log('Category:', category);
 
-    const output = await replicate.run(VTON_MODEL, {
-      input: {
-        human_img: personImageUrl,
-        garm_img: garmentImageUrl,
-        garment_des: getGarmentDescription(category),
-        category: category,
-        // High quality settings
-        denoise_steps: 30,
-        seed: Math.floor(Math.random() * 1000000),
-      },
-    });
+  const output = await replicate.run(FASHN_TRYON_MODEL, {
+    input: {
+      model_image: toDataUri(personImage),
+      garment_image: toDataUri(garmentImage),
+      category: category,
+      // Higher quality settings
+      guidance_scale: 2.5,
+      num_inference_steps: 50,
+      garment_photo_type: 'auto',
+      cover_feet: false,
+      adjust_hands: true,
+      restore_background: true,
+      restore_clothes: true,
+    },
+  });
 
-    console.log('IDM-VTON output:', typeof output);
+  console.log('fashn-ai output:', typeof output);
 
-    // Handle output - could be string URL or array
-    if (typeof output === 'string') {
-      return output;
-    } else if (Array.isArray(output) && output.length > 0) {
-      return output[0] as string;
-    }
-
-    throw new Error('Unexpected output format from IDM-VTON');
-  } catch (error) {
-    console.error('IDM-VTON error:', error);
-    throw error;
+  // Handle output - could be string URL or array
+  if (typeof output === 'string') {
+    return output;
+  } else if (Array.isArray(output) && output.length > 0) {
+    return output[0] as string;
+  } else if (output && typeof output === 'object' && 'image' in output) {
+    return (output as { image: string }).image;
   }
+
+  throw new Error('Unexpected output format from fashn-ai');
 }
 
 /**
- * Generate virtual try-on using Kolors model (backup)
+ * Generate virtual try-on using IDM-VTON model (backup)
  */
-export async function generateTryOnWithKolors(
-  personImageUrl: string,
-  garmentImageUrl: string
+export async function generateTryOnWithIDMVTON(
+  personImage: string,
+  garmentImage: string,
+  category: 'upper_body' | 'lower_body' | 'dresses' = 'upper_body'
 ): Promise<string> {
-  try {
-    console.log('Starting Kolors Virtual Try-On...');
+  console.log('Starting IDM-VTON generation...');
 
-    const output = await replicate.run(KOLORS_VTON_MODEL, {
-      input: {
-        person_image: personImageUrl,
-        garment_image: garmentImageUrl,
-      },
-    });
+  const output = await replicate.run(IDM_VTON_MODEL, {
+    input: {
+      human_img: toDataUri(personImage),
+      garm_img: toDataUri(garmentImage),
+      garment_des: category === 'upper_body' ? 'A stylish top' : category === 'dresses' ? 'A beautiful dress' : 'Stylish pants',
+      category: category,
+      denoise_steps: 30,
+      seed: Math.floor(Math.random() * 1000000),
+    },
+  });
 
-    if (typeof output === 'string') {
-      return output;
-    } else if (Array.isArray(output) && output.length > 0) {
-      return output[0] as string;
-    }
-
-    throw new Error('Unexpected output format from Kolors');
-  } catch (error) {
-    console.error('Kolors error:', error);
-    throw error;
+  if (typeof output === 'string') {
+    return output;
+  } else if (Array.isArray(output) && output.length > 0) {
+    return output[0] as string;
   }
+
+  throw new Error('Unexpected output format from IDM-VTON');
 }
 
 /**
- * Upload base64 image to temporary storage and get URL
- * Replicate needs URLs, not base64
+ * Map our category to fashn-ai category
  */
-export async function uploadToTempStorage(imageData: string): Promise<string> {
-  // If it's already a URL, return it directly
-  if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
-    return imageData;
-  }
-
-  try {
-    // Clean base64 string
-    const cleanBase64 = imageData.replace(/^data:image\/\w+;base64,/, '');
-
-    // Use Replicate's file upload
-    const buffer = Buffer.from(cleanBase64, 'base64');
-    const blob = new Blob([buffer], { type: 'image/jpeg' });
-
-    // Create a File object
-    const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
-
-    // Upload to Replicate
-    const fileUrl = await replicate.files.create(file);
-
-    return fileUrl.urls.get;
-  } catch (error) {
-    console.error('Upload error:', error);
-    // Fallback: return as data URL (some models accept this)
-    if (!imageData.startsWith('data:')) {
-      return `data:image/jpeg;base64,${imageData}`;
-    }
-    return imageData;
+function mapToFashnCategory(category: 'upper_body' | 'lower_body' | 'dresses'): Category {
+  switch (category) {
+    case 'upper_body':
+      return 'tops';
+    case 'lower_body':
+      return 'bottoms';
+    case 'dresses':
+      return 'one-pieces';
+    default:
+      return 'tops';
   }
 }
 
@@ -131,58 +119,29 @@ export async function uploadToTempStorage(imageData: string): Promise<string> {
 export async function runVirtualTryOn(
   personBase64: string,
   garmentBase64: string,
-  category: 'upper_body' | 'lower_body' | 'dresses' = 'upper_body',
-  useKolorsBackup: boolean = false
+  category: 'upper_body' | 'lower_body' | 'dresses' = 'upper_body'
 ): Promise<string> {
+  const fashnCategory = mapToFashnCategory(category);
+
   try {
-    // Upload images to get URLs
-    console.log('Uploading person image...');
-    const personUrl = await uploadToTempStorage(personBase64);
-
-    console.log('Uploading garment image...');
-    const garmentUrl = await uploadToTempStorage(garmentBase64);
-
-    // Run try-on model
-    if (useKolorsBackup) {
-      return await generateTryOnWithKolors(personUrl, garmentUrl);
-    } else {
-      return await generateTryOnWithReplicate(personUrl, garmentUrl, category);
-    }
+    // Try fashn-ai first (more reliable)
+    return await generateTryOnWithFashn(personBase64, garmentBase64, fashnCategory);
   } catch (error) {
-    console.error('Virtual try-on error:', error);
+    console.error('fashn-ai error:', error);
 
-    // Try Kolors as backup
-    if (!useKolorsBackup) {
-      console.log('Trying Kolors as backup...');
-      try {
-        const personUrl = await uploadToTempStorage(personBase64);
-        const garmentUrl = await uploadToTempStorage(garmentBase64);
-        return await generateTryOnWithKolors(personUrl, garmentUrl);
-      } catch (backupError) {
-        console.error('Backup also failed:', backupError);
-      }
+    // Try IDM-VTON as backup
+    console.log('Trying IDM-VTON as backup...');
+    try {
+      return await generateTryOnWithIDMVTON(personBase64, garmentBase64, category);
+    } catch (backupError) {
+      console.error('IDM-VTON backup also failed:', backupError);
+      throw new Error('Virtual try-on generation failed. Please try again.');
     }
-
-    throw new Error('Virtual try-on generation failed');
-  }
-}
-
-function getGarmentDescription(category: Category): string {
-  switch (category) {
-    case 'upper_body':
-      return 'A stylish top/shirt';
-    case 'lower_body':
-      return 'Stylish pants/bottoms';
-    case 'dresses':
-      return 'A beautiful dress';
-    default:
-      return 'A fashionable garment';
   }
 }
 
 export default {
   runVirtualTryOn,
-  generateTryOnWithReplicate,
-  generateTryOnWithKolors,
-  uploadToTempStorage,
+  generateTryOnWithFashn,
+  generateTryOnWithIDMVTON,
 };
