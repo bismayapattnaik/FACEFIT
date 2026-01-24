@@ -15,6 +15,9 @@ import {
   ShoppingBag,
   ExternalLink,
   Lightbulb,
+  ThumbsUp,
+  ThumbsDown,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -37,8 +40,10 @@ export default function TryOnPage() {
     setTryOnProduct,
     setTryOnProductUrl,
     setTryOnMode,
+    setTryOnGender,
     setTryOnResult,
     setTryOnJob,
+    setFeedbackSubmitted,
     resetTryOn,
     dailyFreeRemaining,
     setDailyFreeRemaining,
@@ -49,6 +54,8 @@ export default function TryOnPage() {
   const [productUrlInput, setProductUrlInput] = useState('');
   const [isExtractingUrl, setIsExtractingUrl] = useState(false);
   const [dragActive, setDragActive] = useState<'selfie' | 'product' | null>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackNotes, setFeedbackNotes] = useState('');
   const [outfitSuggestions, setOutfitSuggestions] = useState<{
     analysis: string;
     stylingTips: string[];
@@ -175,6 +182,7 @@ export default function TryOnPage() {
         selfieFile,
         productFile,
         tryOn.mode,
+        tryOn.gender,
         tryOn.productUrl || undefined
       );
 
@@ -235,6 +243,38 @@ export default function TryOnPage() {
     link.href = tryOn.resultImage;
     link.download = `mirrorx-tryon-${Date.now()}.jpg`;
     link.click();
+  };
+
+  const handleFeedback = async (satisfied: boolean) => {
+    if (!tryOn.currentJob?.job_id) return;
+
+    setIsSubmittingFeedback(true);
+    try {
+      await tryOnApi.submitFeedback(
+        tryOn.currentJob.job_id,
+        satisfied,
+        satisfied ? undefined : feedbackNotes || 'User was not satisfied with the result',
+        satisfied ? undefined : ['face_mismatch', 'unrealistic']
+      );
+
+      setFeedbackSubmitted(true);
+      setFeedbackNotes('');
+
+      toast({
+        title: satisfied ? 'Thank you!' : 'Feedback received',
+        description: satisfied
+          ? 'We appreciate your positive feedback!'
+          : 'Thank you! We\'ll use your feedback to improve.',
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Feedback failed',
+        description: 'Could not submit feedback. Please try again.',
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
   return (
@@ -432,6 +472,42 @@ export default function TryOnPage() {
             </CardContent>
           </Card>
 
+          {/* Gender Selection */}
+          <Card>
+            <CardContent className="p-6">
+              <Label className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <User className="w-5 h-5 text-gold" />
+                Select Gender
+              </Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setTryOnGender('female')}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-center',
+                    tryOn.gender === 'female'
+                      ? 'border-gold bg-gold/10'
+                      : 'border-gold/20 hover:border-gold/40'
+                  )}
+                >
+                  <div className="text-2xl mb-2">👩</div>
+                  <div className="font-semibold">Female</div>
+                </button>
+                <button
+                  onClick={() => setTryOnGender('male')}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-center',
+                    tryOn.gender === 'male'
+                      ? 'border-gold bg-gold/10'
+                      : 'border-gold/20 hover:border-gold/40'
+                  )}
+                >
+                  <div className="text-2xl mb-2">👨</div>
+                  <div className="font-semibold">Male</div>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Mode Selection */}
           <Card>
             <CardContent className="p-6">
@@ -539,11 +615,51 @@ export default function TryOnPage() {
                     <Button variant="outline" onClick={() => {
                       resetTryOn();
                       setOutfitSuggestions(null);
+                      setFeedbackNotes('');
                     }}>
                       <RefreshCw className="w-4 h-4 mr-2" />
                       New
                     </Button>
                   </div>
+
+                  {/* Feedback Section */}
+                  {!tryOn.feedbackSubmitted ? (
+                    <div className="mt-4 p-4 bg-charcoal rounded-xl">
+                      <p className="text-sm font-medium text-center mb-3">
+                        Was this try-on accurate?
+                      </p>
+                      <div className="flex gap-3 justify-center">
+                        <Button
+                          variant="outline"
+                          className="flex-1 border-green-500/30 hover:bg-green-500/10 hover:border-green-500"
+                          onClick={() => handleFeedback(true)}
+                          disabled={isSubmittingFeedback}
+                        >
+                          <ThumbsUp className="w-4 h-4 mr-2 text-green-500" />
+                          Yes, looks great!
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1 border-red-500/30 hover:bg-red-500/10 hover:border-red-500"
+                          onClick={() => handleFeedback(false)}
+                          disabled={isSubmittingFeedback}
+                        >
+                          <ThumbsDown className="w-4 h-4 mr-2 text-red-500" />
+                          No, needs improvement
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        Your feedback helps our AI improve
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 p-4 bg-green-500/10 rounded-xl border border-green-500/30">
+                      <p className="text-sm text-center text-green-400 flex items-center justify-center gap-2">
+                        <Check className="w-4 h-4" />
+                        Thank you for your feedback!
+                      </p>
+                    </div>
+                  )}
 
                   {/* Outfit Suggestions for FULL_FIT mode */}
                   {outfitSuggestions && (

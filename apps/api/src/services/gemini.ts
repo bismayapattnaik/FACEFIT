@@ -10,34 +10,100 @@ const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'; // Nano Banana 3 Pro
 const TEXT_MODEL = 'gemini-2.0-flash';
 
-// Expert prompt for photorealistic try-on with face preservation
-const TRYON_PROMPT = `You are an expert virtual fashion try-on system creating 100% photorealistic images.
+// Gender type
+type Gender = 'male' | 'female';
 
-CRITICAL REQUIREMENTS:
-1. PRESERVE THE EXACT FACE - The person's face must be 100% identical to the input image
-2. Keep the same body shape, skin tone, and proportions
-3. Only change the clothing to match the product image
-4. The clothing should fit naturally on the person's body
-5. Maintain realistic lighting, shadows, and fabric draping
-6. Output should look like a real photograph, not AI-generated
-7. Ensure the clothing integrates seamlessly with the person
+// Expert prompt builder for photorealistic try-on with EXACT face preservation
+const buildTryOnPrompt = (gender: Gender, feedbackContext?: string): string => {
+  const genderWord = gender === 'female' ? 'woman' : 'man';
+  const pronouns = gender === 'female' ? { subject: 'she', object: 'her', possessive: 'her' } : { subject: 'he', object: 'him', possessive: 'his' };
 
-Generate a photorealistic image of this person wearing the clothing shown.`;
+  let prompt = `You are an EXPERT virtual fashion try-on system creating 100% PHOTOREALISTIC images.
 
-const FULL_FIT_PROMPT = `You are an expert virtual fashion stylist creating complete outfit looks.
+ABSOLUTE REQUIREMENTS - FACE PRESERVATION (MOST CRITICAL):
+1. The ${genderWord}'s face MUST be 100% IDENTICAL to the input photo - this is NON-NEGOTIABLE
+2. PRESERVE EVERY FACIAL DETAIL EXACTLY:
+   - Exact facial bone structure and shape (jawline, cheekbones, chin)
+   - Exact eye shape, color, size, and spacing
+   - Exact nose shape, size, and bridge
+   - Exact lip shape, color, and size
+   - Exact eyebrow shape, thickness, and arch
+   - Exact skin tone, complexion, and any skin texture
+   - ALL scars, moles, birthmarks, freckles, or beauty marks in EXACT positions
+   - Exact hairline, hair color, hair texture, hair style
+   - Exact ear shape if visible
+   - Any facial hair (beard, mustache) exactly as shown
+3. The face should look like a PHOTOGRAPH of the SAME person, not a similar-looking person
+4. DO NOT alter, beautify, or "improve" any facial features - keep them EXACTLY as input
 
-CRITICAL REQUIREMENTS:
-1. PRESERVE THE EXACT FACE - The person's face must be 100% identical to the input image
-2. The person is wearing a TOP/UPPER garment - create a COMPLETE OUTFIT
-3. Based on the top wear provided, generate matching:
+BODY & CLOTHING REQUIREMENTS:
+5. Keep the exact same body shape, build, and proportions
+6. Maintain the exact skin tone throughout the body
+7. Only change the clothing to match the product image
+8. The clothing should fit naturally on ${pronouns.possessive} body type
+9. Realistic fabric draping based on body shape
+10. Proper lighting and shadows on both face and clothing
+11. Natural pose that shows the clothing well
+
+OUTPUT REQUIREMENTS:
+12. The output must look like a REAL PHOTOGRAPH taken with a professional camera
+13. No AI artifacts, no smooth/plastic skin, no uncanny valley effect
+14. Professional fashion photography quality
+15. Clothing integrates seamlessly with the person`;
+
+  if (feedbackContext) {
+    prompt += `\n\nPREVIOUS USER FEEDBACK TO INCORPORATE:\n${feedbackContext}`;
+  }
+
+  prompt += `\n\nGenerate a photorealistic image of this ${genderWord} wearing the clothing shown while preserving ${pronouns.possessive} EXACT face.`;
+
+  return prompt;
+};
+
+const buildFullFitPrompt = (gender: Gender, feedbackContext?: string): string => {
+  const genderWord = gender === 'female' ? 'woman' : 'man';
+  const pronouns = gender === 'female' ? { subject: 'she', object: 'her', possessive: 'her' } : { subject: 'he', object: 'him', possessive: 'his' };
+
+  let prompt = `You are an EXPERT virtual fashion stylist creating complete outfit looks.
+
+ABSOLUTE REQUIREMENTS - FACE PRESERVATION (MOST CRITICAL):
+1. The ${genderWord}'s face MUST be 100% IDENTICAL to the input photo - this is NON-NEGOTIABLE
+2. PRESERVE EVERY FACIAL DETAIL EXACTLY:
+   - Exact facial bone structure and shape (jawline, cheekbones, chin)
+   - Exact eye shape, color, size, and spacing
+   - Exact nose shape, size, and bridge
+   - Exact lip shape, color, and size
+   - Exact eyebrow shape, thickness, and arch
+   - Exact skin tone, complexion, and any skin texture
+   - ALL scars, moles, birthmarks, freckles, or beauty marks in EXACT positions
+   - Exact hairline, hair color, hair texture, hair style
+   - Exact ear shape if visible
+   - Any facial hair (beard, mustache) exactly as shown
+3. The face should look like a PHOTOGRAPH of the SAME person
+4. DO NOT alter, beautify, or "improve" any facial features
+
+OUTFIT COMPLETION:
+5. The ${genderWord} is wearing a TOP/UPPER garment - create a COMPLETE OUTFIT
+6. Based on the top wear provided, generate matching:
    - Bottom wear (pants, jeans, skirt, etc.) that complements the top
    - Footwear that matches the overall style
-4. The complete outfit should be fashionable and cohesive
-5. Maintain 100% photorealistic quality
-6. Proper lighting, shadows, and natural fabric appearance
-7. The person should look like they're in a fashion photoshoot
+7. The complete outfit should be fashionable and cohesive for ${pronouns.possessive} style
+8. Maintain exact body shape and skin tone
 
-Generate a full-body photorealistic image with the complete styled outfit.`;
+OUTPUT REQUIREMENTS:
+9. Full-body photorealistic image
+10. Professional fashion photoshoot quality
+11. Natural lighting and environment
+12. NO AI artifacts or uncanny effects`;
+
+  if (feedbackContext) {
+    prompt += `\n\nPREVIOUS USER FEEDBACK TO INCORPORATE:\n${feedbackContext}`;
+  }
+
+  prompt += `\n\nGenerate a full-body photorealistic image of this ${genderWord} with the complete styled outfit while preserving ${pronouns.possessive} EXACT face.`;
+
+  return prompt;
+};
 
 interface GenerationResult {
   image: string;
@@ -48,14 +114,18 @@ interface GenerationResult {
 export async function generateTryOnImage(
   selfieBase64: string,
   productBase64: string,
-  mode: TryOnMode = 'PART'
+  mode: TryOnMode = 'PART',
+  gender: Gender = 'female',
+  feedbackContext?: string
 ): Promise<string> {
   try {
     // Clean base64 strings (remove data URL prefix if present)
     const cleanSelfie = selfieBase64.replace(/^data:image\/\w+;base64,/, '');
     const cleanProduct = productBase64.replace(/^data:image\/\w+;base64,/, '');
 
-    const prompt = mode === 'FULL_FIT' ? FULL_FIT_PROMPT : TRYON_PROMPT;
+    const prompt = mode === 'FULL_FIT'
+      ? buildFullFitPrompt(gender, feedbackContext)
+      : buildTryOnPrompt(gender, feedbackContext);
 
     // Use Gemini 3 Pro Image Preview (Nano Banana 3 Pro) for high-fidelity generation
     const response = await client.models.generateContent({
@@ -196,7 +266,9 @@ Return ONLY the JSON object, no other text.`;
 // Generate complete outfit suggestion for Full Fit mode
 export async function generateFullFitSuggestions(
   selfieBase64: string,
-  topWearBase64: string
+  topWearBase64: string,
+  gender: Gender = 'female',
+  feedbackContext?: string
 ): Promise<{
   outfitImage: string;
   analysis: string;
@@ -211,7 +283,7 @@ export async function generateFullFitSuggestions(
 }> {
   try {
     // First generate the complete outfit image
-    const outfitImage = await generateTryOnImage(selfieBase64, topWearBase64, 'FULL_FIT');
+    const outfitImage = await generateTryOnImage(selfieBase64, topWearBase64, 'FULL_FIT', gender, feedbackContext);
 
     // Then get styling recommendations
     const recommendations = await getStyleRecommendations(topWearBase64);

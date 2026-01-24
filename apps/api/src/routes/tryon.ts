@@ -71,7 +71,27 @@ router.post(
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
       const selfieFile = files['selfie_image']?.[0];
       const productFile = files['product_image']?.[0];
-      const { mode = 'PART', product_url } = req.body;
+      const { mode = 'PART', product_url, gender = 'female' } = req.body;
+      const validGender = gender === 'male' ? 'male' : 'female';
+
+      // Get user's feedback context for improved generation (learning from past feedback)
+      let feedbackContext: string | undefined;
+      try {
+        const feedbackResult = await query<{ feedback_notes: string }>(
+          `SELECT feedback_notes FROM tryon_feedback
+           WHERE user_id = $1 AND satisfaction = false
+           ORDER BY created_at DESC LIMIT 5`,
+          [req.userId]
+        );
+        if (feedbackResult.rows.length > 0) {
+          const issues = feedbackResult.rows.map(r => r.feedback_notes).filter(Boolean);
+          if (issues.length > 0) {
+            feedbackContext = `User has previously reported these issues that should be avoided:\n- ${issues.join('\n- ')}`;
+          }
+        }
+      } catch {
+        // Feedback table might not exist yet, continue without context
+      }
 
       if (!selfieFile) {
         return res.status(400).json({
@@ -120,10 +140,10 @@ router.post(
         [jobId, userId, mode, selfieBase64, productBase64 || null, product_url || null]
       );
 
-      // Generate try-on image
+      // Generate try-on image with gender and feedback context
       let resultImage: string;
       try {
-        resultImage = await generateTryOnImage(selfieBase64, productBase64 || '', mode);
+        resultImage = await generateTryOnImage(selfieBase64, productBase64 || '', mode, validGender, feedbackContext);
       } catch (genError) {
         // Update job as failed
         await query(
@@ -250,6 +270,94 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Get job error:', error);
     res.status(500).json({ error: 'Server error', message: 'Failed to get job status' });
+  }
+});
+
+// POST /tryon/:id/feedback - Submit feedback for a try-on job
+router.post('/:id/feedback', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+    const { satisfaction, feedback_notes, issues } = req.body;
+
+    // Verify the job belongs to this user
+    const jobResult = await query(
+      `SELECT id FROM tryon_jobs WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not found',
+        message: 'Try-on job not found',
+      });
+    }
+
+    // Create feedback table if not exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS tryon_feedback (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id UUID NOT NULL REFERENCES tryon_jobs(id),
+        user_id UUID NOT NULL REFERENCES users(id),
+        satisfaction BOOLEAN NOT NULL,
+        feedback_notes TEXT,
+        issues TEXT[],
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Store feedback
+    await query(
+      `INSERT INTO tryon_feedback (job_id, user_id, satisfaction, feedback_notes, issues)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT DO NOTHING`,
+      [id, userId, satisfaction, feedback_notes || null, issues || null]
+    );
+
+    // If not satisfied, we can use this feedback for future generations
+    // The feedback context is already being read in the main try-on endpoint
+
+    res.json({
+      success: true,
+      message: satisfaction
+        ? 'Thank you for your positive feedback!'
+        : 'Thank you for your feedback. We will use it to improve future results.',
+    });
+  } catch (error) {
+    console.error('Feedback error:', error);
+    res.status(500).json({ error: 'Server error', message: 'Failed to submit feedback' });
+  }
+});
+
+// GET /tryon/feedback/stats - Get feedback statistics (for learning/improvement tracking)
+router.get('/feedback/stats', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+
+    const result = await query<{
+      total_tryons: number;
+      satisfied_count: number;
+      unsatisfied_count: number;
+      common_issues: string[];
+    }>(
+      `SELECT
+        COUNT(DISTINCT tf.job_id) as total_feedback,
+        COUNT(CASE WHEN tf.satisfaction = true THEN 1 END) as satisfied_count,
+        COUNT(CASE WHEN tf.satisfaction = false THEN 1 END) as unsatisfied_count
+       FROM tryon_feedback tf
+       WHERE tf.user_id = $1`,
+      [userId]
+    );
+
+    res.json({
+      total_feedback: result.rows[0]?.total_feedback || 0,
+      satisfied_count: result.rows[0]?.satisfied_count || 0,
+      unsatisfied_count: result.rows[0]?.unsatisfied_count || 0,
+      improvement_message: 'Our AI learns from your feedback to provide better results over time.',
+    });
+  } catch (error) {
+    console.error('Feedback stats error:', error);
+    res.status(500).json({ error: 'Server error', message: 'Failed to get feedback stats' });
   }
 });
 

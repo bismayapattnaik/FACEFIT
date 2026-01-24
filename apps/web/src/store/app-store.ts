@@ -1,13 +1,17 @@
 import { create } from 'zustand';
 import type { WardrobeItem, TryOnResponse, TryOnMode } from '@mrrx/shared';
 
+type Gender = 'male' | 'female';
+
 interface TryOnState {
   selfieImage: string | null;
   productImage: string | null;
   productUrl: string | null;
   mode: TryOnMode;
+  gender: Gender;
   currentJob: TryOnResponse | null;
   resultImage: string | null;
+  feedbackSubmitted: boolean;
 }
 
 interface AppState {
@@ -17,8 +21,10 @@ interface AppState {
   setTryOnProduct: (image: string | null) => void;
   setTryOnProductUrl: (url: string | null) => void;
   setTryOnMode: (mode: TryOnMode) => void;
+  setTryOnGender: (gender: Gender) => void;
   setTryOnJob: (job: TryOnResponse | null) => void;
   setTryOnResult: (image: string | null) => void;
+  setFeedbackSubmitted: (submitted: boolean) => void;
   resetTryOn: () => void;
 
   // Wardrobe state
@@ -41,8 +47,10 @@ const initialTryOnState: TryOnState = {
   productImage: null,
   productUrl: null,
   mode: 'PART',
+  gender: 'female',
   currentJob: null,
   resultImage: null,
+  feedbackSubmitted: false,
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -69,6 +77,11 @@ export const useAppStore = create<AppState>((set) => ({
       tryOn: { ...state.tryOn, mode },
     })),
 
+  setTryOnGender: (gender) =>
+    set((state) => ({
+      tryOn: { ...state.tryOn, gender },
+    })),
+
   setTryOnJob: (job) =>
     set((state) => ({
       tryOn: { ...state.tryOn, currentJob: job },
@@ -77,6 +90,11 @@ export const useAppStore = create<AppState>((set) => ({
   setTryOnResult: (image) =>
     set((state) => ({
       tryOn: { ...state.tryOn, resultImage: image },
+    })),
+
+  setFeedbackSubmitted: (submitted) =>
+    set((state) => ({
+      tryOn: { ...state.tryOn, feedbackSubmitted: submitted },
     })),
 
   resetTryOn: () => set({ tryOn: initialTryOnState }),

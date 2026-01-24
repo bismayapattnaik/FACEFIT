@@ -107,6 +107,7 @@ export const tryOnApi = {
     selfieImage: File,
     productImage: File | null,
     mode: 'PART' | 'FULL_FIT',
+    gender: 'male' | 'female' = 'female',
     productUrl?: string
   ): Promise<TryOnResponse> => {
     const formData = new FormData();
@@ -115,6 +116,7 @@ export const tryOnApi = {
       formData.append('product_image', productImage);
     }
     formData.append('mode', mode);
+    formData.append('gender', gender);
     if (productUrl) {
       formData.append('product_url', productUrl);
     }
@@ -127,6 +129,31 @@ export const tryOnApi = {
 
   getStatus: async (jobId: string): Promise<TryOnResponse> => {
     return fetchWithAuth(`/tryon/${jobId}`);
+  },
+
+  submitFeedback: async (
+    jobId: string,
+    satisfaction: boolean,
+    feedbackNotes?: string,
+    issues?: string[]
+  ): Promise<{ success: boolean; message: string }> => {
+    return fetchWithAuth(`/tryon/${jobId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({
+        satisfaction,
+        feedback_notes: feedbackNotes,
+        issues,
+      }),
+    });
+  },
+
+  getFeedbackStats: async (): Promise<{
+    total_feedback: number;
+    satisfied_count: number;
+    unsatisfied_count: number;
+    improvement_message: string;
+  }> => {
+    return fetchWithAuth('/tryon/feedback/stats');
   },
 };
 
