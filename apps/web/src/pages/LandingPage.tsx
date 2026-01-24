@@ -893,7 +893,7 @@ export default function LandingPage() {
                       Reduce returns by 40% and increase conversions by 25%. Our API and Shopify plugin make integration seamless.
                     </p>
                     <Button asChild className="bg-gold-gradient hover:opacity-90">
-                      <a href="mailto:business@mirrorx.in">
+                      <a href="mailto:business@mirrorx.co.in">
                         Contact Sales <ChevronRight className="w-4 h-4 ml-1" />
                       </a>
                     </Button>
@@ -980,8 +980,8 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>support@mirrorx.in</li>
-                <li>business@mirrorx.in</li>
+                <li>support@mirrorx.co.in</li>
+                <li>business@mirrorx.co.in</li>
               </ul>
             </div>
           </div>
