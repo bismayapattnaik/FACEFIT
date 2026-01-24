@@ -4,7 +4,8 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { query, withTransaction } from '../db/index.js';
-import { generateTryOnImage, getStyleRecommendations } from '../services/gemini.js';
+import { getStyleRecommendations } from '../services/gemini.js';
+import { generateTryOnWithFacePreservation } from '../services/face-swap-tryon.js';
 import { DAILY_FREE_TRYONS } from '@mrrx/shared';
 import type { TryOnJob, TryOnJobStatus } from '@mrrx/shared';
 
@@ -144,10 +145,17 @@ router.post(
         [jobId, userId, mode, selfieBase64, productBase64 || null, product_url || null]
       );
 
-      // Generate try-on image using Gemini with enhanced face preservation
+      // Generate try-on image with TWO-STEP face preservation:
+      // Step 1: Gemini generates outfit
+      // Step 2: Face-swap ensures YOUR exact face appears
       let resultImage: string;
       try {
-        resultImage = await generateTryOnImage(selfieBase64, productBase64 || '', mode, validGender, feedbackContext);
+        resultImage = await generateTryOnWithFacePreservation(
+          selfieBase64,
+          productBase64 || '',
+          mode,
+          validGender
+        );
       } catch (genError) {
         // Update job as failed
         await query(
