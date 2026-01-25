@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -14,6 +15,9 @@ import {
   ArrowRight,
   History,
   Wand2,
+  Camera,
+  Download,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,10 +30,11 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/store/auth-store';
-import { occasionApi, OccasionLook, OccasionMeta, Occasion, OccasionStylistRequest } from '@/lib/api';
+import { occasionApi, tryOnApi, OccasionLook, OccasionMeta, Occasion, OccasionStylistRequest, OccasionLookItem } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const STYLE_LEVELS = [
@@ -68,6 +73,14 @@ export default function OccasionStylistPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyRequests, setHistoryRequests] = useState<OccasionStylistRequest[]>([]);
 
+  // Try-on preview
+  const [showTryOnDialog, setShowTryOnDialog] = useState(false);
+  const [tryOnResult, setTryOnResult] = useState<string | null>(null);
+  const [isTryingOn, setIsTryingOn] = useState(false);
+  const [tryOnItem, setTryOnItem] = useState<OccasionLookItem | null>(null);
+  const [hasSavedSelfie, setHasSavedSelfie] = useState(false);
+  const navigate = useNavigate();
+
   // Fetch occasions
   useEffect(() => {
     async function fetchOccasions() {
@@ -95,6 +108,19 @@ export default function OccasionStylistPage() {
       }
     }
     fetchHistory();
+  }, []);
+
+  // Check if user has a saved selfie
+  useEffect(() => {
+    async function checkSelfie() {
+      try {
+        const response = await tryOnApi.getSavedSelfie();
+        setHasSavedSelfie(response.has_selfie);
+      } catch {
+        // Silent fail
+      }
+    }
+    checkSelfie();
   }, []);
 
   const handleGenerate = async () => {
@@ -190,6 +216,60 @@ export default function OccasionStylistPage() {
         title: 'Maximum 3 colors',
         description: 'Remove a color preference first.',
       });
+    }
+  };
+
+  const handleTryOn = async (item: OccasionLookItem) => {
+    if (!hasSavedSelfie) {
+      toast({
+        title: 'No saved photo',
+        description: 'Please upload a photo in the Try-On feature first to use this feature.',
+        action: (
+          <Button size="sm" onClick={() => navigate('/app/tryon')}>
+            Go to Try-On
+          </Button>
+        ),
+      });
+      return;
+    }
+
+    // Get the buy link URL to use as product image
+    const buyLink = item.buy_links?.[0]?.url;
+    if (!buyLink) {
+      toast({
+        variant: 'destructive',
+        title: 'No product link available',
+        description: 'This item does not have a product link for try-on.',
+      });
+      return;
+    }
+
+    setTryOnItem(item);
+    setShowTryOnDialog(true);
+    setIsTryingOn(true);
+    setTryOnResult(null);
+
+    try {
+      const response = await tryOnApi.quickTryOnFromUrl(
+        buyLink,
+        'PART',
+        gender
+      );
+
+      if (response.result_image_url) {
+        setTryOnResult(response.result_image_url);
+      } else {
+        throw new Error('No result image generated');
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Try-on failed',
+        description: error.message || 'Could not generate try-on preview. Please try again.',
+      });
+      setShowTryOnDialog(false);
+    } finally {
+      setIsTryingOn(false);
     }
   };
 
@@ -523,27 +603,39 @@ export default function OccasionStylistPage() {
                                 {item.brand} • {formatPrice(item.price)}
                               </p>
                             </div>
-                            {item.buy_links && item.buy_links.length > 0 && (
-                              <div className="flex gap-1">
-                                {item.buy_links.slice(0, 2).map((link, linkIndex) => (
+                            <div className="flex gap-1 items-center">
+                              {item.buy_links && item.buy_links.length > 0 && (
+                                <>
                                   <Button
-                                    key={linkIndex}
                                     size="sm"
-                                    variant="ghost"
-                                    asChild
-                                    className="text-xs px-2"
+                                    variant="outline"
+                                    onClick={() => handleTryOn(item)}
+                                    className="text-xs px-2 border-gold/50 hover:bg-gold/10"
+                                    title="Try on this item"
                                   >
-                                    <a
-                                      href={link.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      {link.store}
-                                    </a>
+                                    <Camera className="w-3 h-3 mr-1" />
+                                    Try On
                                   </Button>
-                                ))}
-                              </div>
-                            )}
+                                  {item.buy_links.slice(0, 1).map((link, linkIndex) => (
+                                    <Button
+                                      key={linkIndex}
+                                      size="sm"
+                                      variant="ghost"
+                                      asChild
+                                      className="text-xs px-2"
+                                    >
+                                      <a
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        {link.store}
+                                      </a>
+                                    </Button>
+                                  ))}
+                                </>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -688,6 +780,86 @@ export default function OccasionStylistPage() {
               ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Try-On Preview Dialog */}
+      <Dialog open={showTryOnDialog} onOpenChange={setShowTryOnDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-gold" />
+              Try-On Preview
+            </DialogTitle>
+            <DialogDescription>
+              {tryOnItem ? `See how "${tryOnItem.title}" looks on you` : 'Virtual try-on result'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center py-4">
+            {isTryingOn ? (
+              <div className="flex flex-col items-center justify-center h-64 space-y-4">
+                <RefreshCw className="w-8 h-8 text-gold animate-spin" />
+                <p className="text-muted-foreground">Generating try-on preview...</p>
+                <p className="text-xs text-muted-foreground">This may take a moment</p>
+              </div>
+            ) : tryOnResult ? (
+              <div className="space-y-4 w-full">
+                <div className="relative rounded-lg overflow-hidden bg-charcoal">
+                  <img
+                    src={tryOnResult}
+                    alt="Try-on result"
+                    className="w-full h-auto max-h-96 object-contain"
+                  />
+                </div>
+                {tryOnItem && (
+                  <div className="p-3 bg-charcoal rounded-lg">
+                    <p className="font-medium">{tryOnItem.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {tryOnItem.brand} • {formatPrice(tryOnItem.price)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64">
+                <X className="w-8 h-8 text-muted-foreground" />
+                <p className="text-muted-foreground mt-2">No preview available</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            {tryOnResult && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Download the image
+                  const link = document.createElement('a');
+                  link.href = tryOnResult;
+                  link.download = `tryon-${tryOnItem?.title || 'preview'}.png`;
+                  link.click();
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Save Image
+              </Button>
+            )}
+            {tryOnItem?.buy_links?.[0] && tryOnResult && (
+              <Button
+                className="bg-gold hover:bg-gold/90"
+                asChild
+              >
+                <a
+                  href={tryOnItem.buy_links[0].url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Buy from {tryOnItem.buy_links[0].store}
+                </a>
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

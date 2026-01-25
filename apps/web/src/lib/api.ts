@@ -170,6 +170,43 @@ export const tryOnApi = {
   }> => {
     return fetchWithAuth(`/tryon/list/recent?limit=${limit}`);
   },
+
+  getSavedSelfie: async (): Promise<{
+    has_selfie: boolean;
+    selfie_base64?: string;
+  }> => {
+    return fetchWithAuth('/tryon/selfie/saved');
+  },
+
+  quickTryOn: async (
+    productImageBase64: string,
+    mode: 'PART' | 'FULL_FIT' = 'PART',
+    gender: 'male' | 'female' = 'female'
+  ): Promise<TryOnResponse> => {
+    return fetchWithAuth('/tryon/quick', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_image_base64: productImageBase64,
+        mode,
+        gender,
+      }),
+    });
+  },
+
+  quickTryOnFromUrl: async (
+    productUrl: string,
+    mode: 'PART' | 'FULL_FIT' = 'PART',
+    gender: 'male' | 'female' = 'female'
+  ): Promise<TryOnResponse> => {
+    return fetchWithAuth('/tryon/quick', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_url: productUrl,
+        mode,
+        gender,
+      }),
+    });
+  },
 };
 
 // Product API

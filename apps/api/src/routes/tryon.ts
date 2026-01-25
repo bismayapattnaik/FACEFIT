@@ -19,6 +19,107 @@ const INDIAN_STORES = [
 
 const router = Router();
 
+// Ensure user_selfies table exists
+async function ensureSelfieTableExists() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_selfies (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      selfie_base64 TEXT NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )
+  `);
+}
+let selfieTableInitialized = false;
+async function initSelfieTable() {
+  if (!selfieTableInitialized) {
+    await ensureSelfieTableExists();
+    selfieTableInitialized = true;
+  }
+}
+
+// Save user's selfie for future use
+async function saveUserSelfie(userId: string, selfieBase64: string) {
+  try {
+    await initSelfieTable();
+    await query(
+      `INSERT INTO user_selfies (user_id, selfie_base64)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET selfie_base64 = $2, updated_at = NOW()`,
+      [userId, selfieBase64]
+    );
+  } catch (error) {
+    console.error('Failed to save user selfie:', error);
+  }
+}
+
+// Get user's saved selfie
+async function getUserSelfie(userId: string): Promise<string | null> {
+  try {
+    await initSelfieTable();
+    const result = await query<{ selfie_base64: string }>(
+      `SELECT selfie_base64 FROM user_selfies WHERE user_id = $1`,
+      [userId]
+    );
+    return result.rows[0]?.selfie_base64 || null;
+  } catch {
+    return null;
+  }
+}
+
+// Validate generated image isn't empty/black
+async function validateGeneratedImage(base64Image: string): Promise<boolean> {
+  try {
+    // Extract base64 data
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Use sharp to analyze the image
+    const metadata = await sharp(buffer).metadata();
+
+    if (!metadata.width || !metadata.height) {
+      console.error('Image has no dimensions');
+      return false;
+    }
+
+    // Check if image is too small
+    if (metadata.width < 100 || metadata.height < 100) {
+      console.error('Image is too small:', metadata.width, 'x', metadata.height);
+      return false;
+    }
+
+    // Get image statistics to check if it's mostly black/empty
+    const stats = await sharp(buffer).stats();
+
+    // Check if the image is predominantly black (low mean values across all channels)
+    const isBlack = stats.channels.every(channel => channel.mean < 10);
+    if (isBlack) {
+      console.error('Image appears to be mostly black - mean values:', stats.channels.map(c => c.mean));
+      return false;
+    }
+
+    // Check if image has very low variance (solid color)
+    const hasNoVariance = stats.channels.every(channel => channel.stdev < 5);
+    if (hasNoVariance) {
+      console.error('Image has no variance - might be a solid color');
+      return false;
+    }
+
+    console.log('Image validation passed:', {
+      width: metadata.width,
+      height: metadata.height,
+      means: stats.channels.map(c => Math.round(c.mean)),
+      stdevs: stats.channels.map(c => Math.round(c.stdev))
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Image validation error:', error);
+    return false;
+  }
+}
+
 // Configure multer for image uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -137,6 +238,9 @@ router.post(
         productBase64 = product_url;
       }
 
+      // Save user's selfie for future use (Occasion Stylist, etc.)
+      saveUserSelfie(userId, selfieBase64);
+
       // Create job record
       await query(
         `INSERT INTO tryon_jobs (id, user_id, mode, source_image_url, product_image_url, product_url, status, credits_used)
@@ -165,6 +269,13 @@ router.post(
         if (!base64Part || base64Part.length < 1000) {
           console.error('Base64 data too small or missing:', base64Part?.length || 0);
           throw new Error('Generated image data is incomplete');
+        }
+
+        // Validate image content isn't black/empty
+        const isValidImage = await validateGeneratedImage(resultImage);
+        if (!isValidImage) {
+          console.error('Generated image appears to be black or empty');
+          throw new Error('Generated image is invalid (black or empty). Please try again with different photos.');
         }
 
         console.log(`Valid result image generated, total length: ${resultImage.length}`);
@@ -412,5 +523,172 @@ router.get('/feedback/stats', authenticate, async (req: AuthRequest, res: Respon
     res.status(500).json({ error: 'Server error', message: 'Failed to get feedback stats' });
   }
 });
+
+// GET /tryon/selfie - Get user's saved selfie
+router.get('/selfie/saved', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const selfie = await getUserSelfie(userId);
+
+    if (!selfie) {
+      return res.status(404).json({
+        error: 'Not found',
+        message: 'No saved selfie found. Please do a try-on first.',
+        has_selfie: false,
+      });
+    }
+
+    res.json({
+      has_selfie: true,
+      selfie_base64: selfie,
+    });
+  } catch (error) {
+    console.error('Get selfie error:', error);
+    res.status(500).json({ error: 'Server error', message: 'Failed to get selfie' });
+  }
+});
+
+// POST /tryon/quick - Quick try-on using saved selfie
+router.post(
+  '/quick',
+  authenticate,
+  upload.single('product_image'),
+  async (req: AuthRequest, res: Response) => {
+    const startTime = Date.now();
+    const jobId = uuidv4();
+
+    try {
+      const productFile = req.file;
+      const { mode = 'PART', product_url, gender = 'female', product_image_base64 } = req.body;
+      const validGender = gender === 'male' ? 'male' : 'female';
+
+      const userId = req.userId!;
+      const user = req.user!;
+
+      // Get saved selfie
+      const selfieBase64 = await getUserSelfie(userId);
+      if (!selfieBase64) {
+        return res.status(400).json({
+          error: 'No selfie',
+          message: 'You need to do at least one regular try-on first to save your photo.',
+        });
+      }
+
+      // Get product image
+      let productBase64: string | undefined;
+      if (productFile) {
+        productBase64 = await processImage(productFile.buffer);
+      } else if (product_image_base64) {
+        productBase64 = product_image_base64;
+      } else if (product_url) {
+        // Fetch product image from URL
+        try {
+          const response = await fetch(product_url);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          productBase64 = await processImage(buffer);
+        } catch {
+          return res.status(400).json({
+            error: 'Invalid URL',
+            message: 'Could not fetch product image from URL.',
+          });
+        }
+      }
+
+      if (!productBase64) {
+        return res.status(400).json({
+          error: 'Missing product',
+          message: 'Product image or URL is required',
+        });
+      }
+
+      // Check credits
+      const dailyUsage = await getDailyUsage(userId);
+      const hasFreeTries = user.subscription_tier === 'FREE' && dailyUsage < DAILY_FREE_TRYONS;
+      const hasPaidCredits = user.credits_balance > 0;
+      const hasUnlimited = user.subscription_tier !== 'FREE';
+
+      if (!hasFreeTries && !hasPaidCredits && !hasUnlimited) {
+        return res.status(402).json({
+          error: 'Insufficient credits',
+          message: 'No credits remaining.',
+        });
+      }
+
+      // Create job
+      await query(
+        `INSERT INTO tryon_jobs (id, user_id, mode, source_image_url, product_image_url, status, credits_used)
+         VALUES ($1, $2, $3, $4, $5, 'PROCESSING', 1)`,
+        [jobId, userId, mode, selfieBase64, productBase64]
+      );
+
+      // Generate try-on
+      const resultImage = await generateTryOnImage(
+        selfieBase64,
+        productBase64,
+        mode,
+        validGender
+      );
+
+      // Validate
+      if (!resultImage || !resultImage.startsWith('data:image/')) {
+        throw new Error('Invalid image generated');
+      }
+
+      const isValidImage = await validateGeneratedImage(resultImage);
+      if (!isValidImage) {
+        throw new Error('Generated image is invalid (black or empty)');
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      // Update job
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE tryon_jobs SET status = 'SUCCEEDED', result_image_url = $1,
+           processing_time_ms = $2, completed_at = NOW()
+           WHERE id = $3`,
+          [resultImage, processingTime, jobId]
+        );
+
+        if (hasUnlimited) {
+          // No deduction
+        } else if (hasFreeTries) {
+          await client.query(
+            `INSERT INTO daily_usage (user_id, usage_date, tryon_count)
+             VALUES ($1, CURRENT_DATE, 1)
+             ON CONFLICT (user_id, usage_date)
+             DO UPDATE SET tryon_count = daily_usage.tryon_count + 1`,
+            [userId]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO credits_ledger (user_id, amount, transaction_type, description, reference_id)
+             VALUES ($1, -1, 'USAGE', 'Quick try-on generation', $2)`,
+            [userId, jobId]
+          );
+        }
+      });
+
+      res.json({
+        job_id: jobId,
+        status: 'SUCCEEDED',
+        result_image_url: resultImage,
+        credits_used: 1,
+        processing_time_ms: processingTime,
+      });
+    } catch (error) {
+      console.error('Quick try-on error:', error);
+      await query(
+        `UPDATE tryon_jobs SET status = 'FAILED', error_message = $1, completed_at = NOW()
+         WHERE id = $2`,
+        [(error as Error).message, jobId]
+      );
+      res.status(500).json({
+        error: 'Generation failed',
+        message: (error as Error).message || 'Please try again.',
+      });
+    }
+  }
+);
 
 export default router;
