@@ -155,6 +155,58 @@ export const tryOnApi = {
   }> => {
     return fetchWithAuth('/tryon/feedback/stats');
   },
+
+  listRecent: async (limit = 50): Promise<{
+    jobs: Array<{
+      id: string;
+      user_id: string;
+      mode: string;
+      result_image_url: string | null;
+      product_image_url: string | null;
+      status: string;
+      created_at: string;
+    }>;
+    total: number;
+  }> => {
+    return fetchWithAuth(`/tryon/list/recent?limit=${limit}`);
+  },
+
+  getSavedSelfie: async (): Promise<{
+    has_selfie: boolean;
+    selfie_base64?: string;
+  }> => {
+    return fetchWithAuth('/tryon/selfie/saved');
+  },
+
+  quickTryOn: async (
+    productImageBase64: string,
+    mode: 'PART' | 'FULL_FIT' = 'PART',
+    gender: 'male' | 'female' = 'female'
+  ): Promise<TryOnResponse> => {
+    return fetchWithAuth('/tryon/quick', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_image_base64: productImageBase64,
+        mode,
+        gender,
+      }),
+    });
+  },
+
+  quickTryOnFromUrl: async (
+    productUrl: string,
+    mode: 'PART' | 'FULL_FIT' = 'PART',
+    gender: 'male' | 'female' = 'female'
+  ): Promise<TryOnResponse> => {
+    return fetchWithAuth('/tryon/quick', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_url: productUrl,
+        mode,
+        gender,
+      }),
+    });
+  },
 };
 
 // Product API
@@ -401,6 +453,134 @@ export const healthApi = {
   check: async (): Promise<{ status: string; timestamp: string }> => {
     const response = await fetch(`${API_BASE}/health`);
     return response.json();
+  },
+};
+
+// ==========================================
+// PREMIUM FEATURES API
+// ==========================================
+
+// Occasion Stylist API
+export type Occasion =
+  | 'office' | 'interview' | 'date_night' | 'wedding_day' | 'wedding_night'
+  | 'festive' | 'vacation' | 'casual' | 'college' | 'party' | 'formal' | 'ethnic';
+
+export interface OccasionLookItem {
+  type: 'top' | 'bottom' | 'footwear' | 'accessory' | 'outerwear';
+  title: string;
+  brand: string | null;
+  price: number | null;
+  image_url: string | null;
+  search_query: string;
+  buy_links: Array<{ store: string; url: string }>;
+}
+
+export interface OccasionLook {
+  id: string;
+  rank: number;
+  name: string;
+  description: string;
+  items: OccasionLookItem[];
+  total_price: number;
+  rationale: string;
+  palette_match: number;
+  tryon_job_id: string | null;
+  is_saved: boolean;
+  user_rating?: number;
+}
+
+export interface OccasionStylistRequest {
+  id: string;
+  user_id: string;
+  occasion: Occasion;
+  budget_min: number;
+  budget_max: number;
+  style_slider_value: number;
+  color_preferences: string[];
+  use_style_dna: boolean;
+  gender: 'male' | 'female';
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  looks?: OccasionLook[];
+  looks_count?: number;
+}
+
+export interface OccasionMeta {
+  id: Occasion;
+  name: string;
+  icon: string;
+}
+
+export const occasionApi = {
+  generate: async (params: {
+    occasion: Occasion;
+    budget_min?: number;
+    budget_max?: number;
+    style_slider?: number;
+    color_preferences?: string[];
+    use_style_dna?: boolean;
+    gender?: 'male' | 'female';
+  }): Promise<{
+    request_id: string;
+    occasion: Occasion;
+    looks: OccasionLook[];
+    generated_at: string;
+  }> => {
+    return fetchWithAuth('/occasion-stylist', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  get: async (requestId: string): Promise<OccasionStylistRequest> => {
+    return fetchWithAuth(`/occasion-stylist/${requestId}`);
+  },
+
+  list: async (page = 1, limit = 10): Promise<{
+    requests: OccasionStylistRequest[];
+    total: number;
+    page: number;
+    limit: number;
+  }> => {
+    return fetchWithAuth(`/occasion-stylist?page=${page}&limit=${limit}`);
+  },
+
+  submitFeedback: async (
+    requestId: string,
+    lookId: string,
+    rating?: number,
+    saveToWardrobe?: boolean
+  ): Promise<{ success: boolean }> => {
+    return fetchWithAuth(`/occasion-stylist/${requestId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({
+        look_id: lookId,
+        rating,
+        save_to_wardrobe: saveToWardrobe,
+      }),
+    });
+  },
+
+  getOccasions: async (): Promise<{ occasions: OccasionMeta[] }> => {
+    return fetchWithAuth('/occasion-stylist/meta/occasions');
+  },
+
+  fetchProductImage: async (
+    searchUrl: string,
+    itemType?: string,
+    gender?: 'male' | 'female'
+  ): Promise<{
+    success: boolean;
+    image_url: string;
+    title?: string;
+    price?: number;
+    brand?: string;
+  }> => {
+    return fetchWithAuth('/occasion-stylist/product-image', {
+      method: 'POST',
+      body: JSON.stringify({ search_url: searchUrl, item_type: itemType, gender }),
+    });
   },
 };
 
