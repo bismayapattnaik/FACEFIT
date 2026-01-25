@@ -548,11 +548,130 @@ Return ONLY valid JSON:
   return [];
 }
 
+/**
+ * Analyze a garment alone without user's Style DNA (for complementary suggestions)
+ * Used when user hasn't created a style profile yet
+ */
+export async function analyzeGarmentAlone(
+  garmentPhotoBase64: string,
+  clothingType: 'topwear' | 'bottomwear' | 'footwear' | 'accessory' = 'topwear'
+): Promise<{
+  itemAnalysis: string;
+  complementaryItems: Array<{
+    category: string;
+    title: string;
+    description: string;
+    colors: string[];
+    occasions: string[];
+    priceRange: string;
+    searchQuery: string;
+    buyLinks: Array<{ store: string; url: string }>;
+  }>;
+  fullOutfitIdea: string;
+  stylingTips: string[];
+}> {
+  const cleanGarment = garmentPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
+
+  const complementTypes = {
+    topwear: 'bottom wear (jeans, trousers, skirts), footwear, and accessories',
+    bottomwear: 'top wear (shirts, t-shirts, blouses), footwear, and accessories',
+    footwear: 'outfits that would match, and accessories',
+    accessory: 'full outfits that would complement this accessory'
+  };
+
+  const prompt = `You are a fashion stylist analyzing this ${clothingType} item. Provide complementary item suggestions.
+
+Analyze this garment and suggest items to complete the outfit.
+
+SUGGEST: ${complementTypes[clothingType]}
+
+For each complementary item provide:
+- Category (Bottomwear/Topwear/Footwear/Accessory)
+- Title (specific item name)
+- Description
+- Matching colors
+- Suitable occasions
+- Price range in INR
+- Search query for Indian e-commerce
+
+Return ONLY valid JSON:
+{
+  "itemAnalysis": "Description of the analyzed garment (color, style, material, occasion)",
+  "complementaryItems": [
+    {
+      "category": "Bottomwear",
+      "title": "Slim Fit Chinos",
+      "description": "specific description",
+      "colors": ["Navy", "Beige"],
+      "occasions": ["Office", "Casual"],
+      "priceRange": "₹1,500 - ₹3,000",
+      "searchQuery": "slim fit chinos men"
+    }
+  ],
+  "fullOutfitIdea": "Complete outfit suggestion combining all items",
+  "stylingTips": ["tip1", "tip2", "tip3"]
+}`;
+
+  try {
+    const response = await client.models.generateContent({
+      model: VISION_MODEL,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: 'image/jpeg', data: cleanGarment } },
+          { text: prompt }
+        ]
+      }]
+    });
+
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      // Add buy links
+      result.complementaryItems = (result.complementaryItems || []).map((item: any) => ({
+        ...item,
+        buyLinks: INDIAN_STORES.map(store => ({
+          store: store.name,
+          url: `${store.baseUrl}${encodeURIComponent(item.searchQuery || item.title)}`
+        }))
+      }));
+      return result;
+    }
+  } catch (e) {
+    console.error('Failed to analyze garment:', e);
+  }
+
+  // Default fallback
+  return {
+    itemAnalysis: 'A stylish garment that can be paired with various items.',
+    complementaryItems: [
+      {
+        category: clothingType === 'topwear' ? 'Bottomwear' : 'Topwear',
+        title: clothingType === 'topwear' ? 'Classic Denim Jeans' : 'Classic Cotton Shirt',
+        description: 'A versatile piece that pairs well with most items',
+        colors: ['Blue', 'Black', 'White'],
+        occasions: ['Casual', 'Weekend'],
+        priceRange: '₹1,500 - ₹3,000',
+        searchQuery: clothingType === 'topwear' ? 'classic denim jeans' : 'cotton casual shirt',
+        buyLinks: INDIAN_STORES.map(store => ({
+          store: store.name,
+          url: `${store.baseUrl}${encodeURIComponent(clothingType === 'topwear' ? 'classic denim jeans' : 'cotton casual shirt')}`
+        }))
+      }
+    ],
+    fullOutfitIdea: 'Pair with neutral basics for a clean, effortless look.',
+    stylingTips: ['Keep accessories minimal', 'Choose complementary colors', 'Consider the occasion']
+  };
+}
+
 export default {
   analyzeStyleDNA,
   getWardrobeRecommendations,
   generateOutfitSuggestions,
   predictSize,
   styleGarmentForUser,
-  getTrendingForUser
+  getTrendingForUser,
+  analyzeGarmentAlone
 };

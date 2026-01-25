@@ -191,7 +191,18 @@ export default function TryOnPage() {
       );
 
       setProgress(100);
-      setTryOnResult(result.result_image_url || null);
+
+      // Check if result image was actually generated
+      if (!result.result_image_url) {
+        toast({
+          variant: 'destructive',
+          title: 'Generation incomplete',
+          description: 'The AI could not generate an image. Please try again with different photos.',
+        });
+        return;
+      }
+
+      setTryOnResult(result.result_image_url);
       setTryOnJob(result);
 
       // Store outfit suggestions if available (FULL_FIT mode)
