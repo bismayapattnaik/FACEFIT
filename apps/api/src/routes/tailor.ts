@@ -10,6 +10,7 @@ import {
   predictSize,
   styleGarmentForUser,
   getTrendingForUser,
+  analyzeGarmentAlone,
   StyleDNA
 } from '../services/ai-tailor.js';
 
@@ -440,13 +441,102 @@ router.post('/quick-analysis', upload.single('photo'), async (req, res: Response
 });
 
 /**
+ * POST /api/tailor/size-recommendation - Get size recommendation (alias for size-predict)
+ * Used by the TryOnPage after generation
+ */
+router.post('/size-recommendation', authenticate, upload.single('photo'), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { productCategory = 'tops', photo, height, weight } = req.body;
+
+    let photoBase64: string;
+    let gender: 'male' | 'female' = 'female';
+
+    if (req.file) {
+      photoBase64 = await processImage(req.file.buffer);
+      gender = req.body.gender || 'female';
+    } else if (photo) {
+      photoBase64 = photo.replace(/^data:image\/\w+;base64,/, '');
+      gender = req.body.gender || 'female';
+    } else {
+      // Try to get from user's style profile
+      const profile = await query<{ photo_data: string; gender: 'male' | 'female' }>(
+        `SELECT photo_data, gender FROM user_style_profiles WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (profile.rows.length === 0 || !profile.rows[0].photo_data) {
+        // Return a generic size recommendation if no photo available
+        res.json({
+          success: true,
+          sizeRecommendation: {
+            category: productCategory,
+            recommendedSize: 'M',
+            measurements: {},
+            fitTips: ['Try the size chart on the product page', 'Consider ordering your usual size']
+          },
+          basedOnPastFeedback: false
+        });
+        return;
+      }
+
+      photoBase64 = profile.rows[0].photo_data;
+      gender = profile.rows[0].gender;
+    }
+
+    const measurements = {
+      height: height ? parseInt(height) : undefined,
+      weight: weight ? parseInt(weight) : undefined,
+    };
+
+    const category = ['tops', 'bottoms', 'dresses'].includes(productCategory)
+      ? productCategory as 'tops' | 'bottoms' | 'dresses'
+      : 'tops';
+
+    const sizePredictions = await predictSize(photoBase64, measurements, gender, category);
+
+    // Get the most confident prediction
+    const bestPrediction = sizePredictions.sort((a, b) => b.confidence - a.confidence)[0];
+
+    res.json({
+      success: true,
+      sizeRecommendation: bestPrediction ? {
+        category: bestPrediction.category,
+        recommendedSize: bestPrediction.recommendedSize,
+        measurements: measurements,
+        fitTips: [bestPrediction.fitNotes, `Confidence: ${bestPrediction.confidence}%`].filter(Boolean)
+      } : {
+        category: productCategory,
+        recommendedSize: 'M',
+        measurements: {},
+        fitTips: ['Consider checking the size chart']
+      },
+      basedOnPastFeedback: false
+    });
+  } catch (error) {
+    console.error('Size recommendation error:', error);
+    // Return a safe default instead of an error
+    res.json({
+      success: true,
+      sizeRecommendation: {
+        category: req.body.productCategory || 'tops',
+        recommendedSize: 'M',
+        measurements: {},
+        fitTips: ['Please check the product size chart for best results']
+      },
+      basedOnPastFeedback: false
+    });
+  }
+});
+
+/**
  * POST /api/tailor/complementary - Get complementary items for a garment
- * (Legacy endpoint for backward compatibility)
+ * Works with or without a user style profile
  */
 router.post('/complementary', authenticate, upload.single('garment'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
-    const { clothingImage, clothingType } = req.body;
+    const { clothingImage, clothingType = 'topwear' } = req.body;
 
     let garmentBase64: string;
 
@@ -459,6 +549,7 @@ router.post('/complementary', authenticate, upload.single('garment'), async (req
       return;
     }
 
+    // Try to get user's style profile for personalized suggestions
     const profile = await query<{
       style_dna: StyleDNA;
       photo_data: string;
@@ -468,19 +559,44 @@ router.post('/complementary', authenticate, upload.single('garment'), async (req
       [userId]
     );
 
-    if (profile.rows.length === 0) {
-      res.status(400).json({ error: 'Please create your Style DNA first', needsProfile: true });
+    // If user has a style profile, use personalized analysis
+    if (profile.rows.length > 0 && profile.rows[0].photo_data && profile.rows[0].style_dna) {
+      const { style_dna, photo_data, gender } = profile.rows[0];
+      const analysis = await styleGarmentForUser(photo_data, garmentBase64, style_dna, gender);
+
+      res.json({
+        success: true,
+        complementaryItems: analysis.complementaryItems.map(item => ({
+          category: item.type,
+          title: item.description,
+          description: item.description,
+          colors: [item.color],
+          occasions: analysis.occasions || ['Casual'],
+          priceRange: '₹1,500 - ₹4,000',
+          searchQuery: item.searchQuery,
+          buyLinks: item.buyLinks
+        })),
+        stylingTips: analysis.howToWear,
+        compatibility: analysis.compatibility,
+        personalized: true
+      });
       return;
     }
 
-    const { style_dna, photo_data, gender } = profile.rows[0];
-    const analysis = await styleGarmentForUser(photo_data, garmentBase64, style_dna, gender);
+    // No profile - use generic garment analysis
+    const validClothingType = ['topwear', 'bottomwear', 'footwear', 'accessory'].includes(clothingType)
+      ? clothingType as 'topwear' | 'bottomwear' | 'footwear' | 'accessory'
+      : 'topwear';
+
+    const analysis = await analyzeGarmentAlone(garmentBase64, validClothingType);
 
     res.json({
       success: true,
+      itemAnalysis: analysis.itemAnalysis,
       complementaryItems: analysis.complementaryItems,
-      stylingTips: analysis.howToWear,
-      compatibility: analysis.compatibility
+      fullOutfitIdea: analysis.fullOutfitIdea,
+      stylingTips: analysis.stylingTips,
+      personalized: false
     });
   } catch (error) {
     console.error('Complementary suggestions error:', error);
