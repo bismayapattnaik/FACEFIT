@@ -12,8 +12,6 @@ import TryOnPage from '@/pages/app/TryOnPage';
 import WardrobePage from '@/pages/app/WardrobePage';
 import AccountPage from '@/pages/app/AccountPage';
 import AiTailorPage from '@/pages/app/AiTailorPage';
-import ComparePage from '@/pages/app/ComparePage';
-import WishlistPage from '@/pages/app/WishlistPage';
 import OccasionStylistPage from '@/pages/app/OccasionStylistPage';
 import PricingPage from '@/pages/PricingPage';
 import PrivacyPage from '@/pages/legal/PrivacyPage';
@@ -107,8 +105,6 @@ export default function App() {
           <Route path="tryon" element={<TryOnPage />} />
           <Route path="tailor" element={<AiTailorPage />} />
           <Route path="wardrobe" element={<WardrobePage />} />
-          <Route path="compare" element={<ComparePage />} />
-          <Route path="wishlist" element={<WishlistPage />} />
           <Route path="occasion" element={<OccasionStylistPage />} />
           <Route path="account" element={<AccountPage />} />
         </Route>

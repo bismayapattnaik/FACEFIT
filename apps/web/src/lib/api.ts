@@ -460,206 +460,6 @@ export const healthApi = {
 // PREMIUM FEATURES API
 // ==========================================
 
-// Compare Sets API
-export interface CompareSet {
-  id: string;
-  user_id: string;
-  name: string | null;
-  description: string | null;
-  is_favorite: boolean;
-  items: CompareSetItem[];
-  item_count?: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CompareSetItem {
-  id: string;
-  compare_set_id: string;
-  tryon_job_id: string;
-  position: number;
-  notes: string | null;
-  is_winner: boolean;
-  result_image_url?: string;
-  mode?: string;
-  status?: string;
-  created_at: string;
-}
-
-export const compareApi = {
-  create: async (
-    jobIds: string[],
-    name?: string,
-    description?: string
-  ): Promise<CompareSet> => {
-    return fetchWithAuth('/compare-sets', {
-      method: 'POST',
-      body: JSON.stringify({ job_ids: jobIds, name, description }),
-    });
-  },
-
-  list: async (page = 1, limit = 20): Promise<{
-    sets: CompareSet[];
-    total: number;
-    page: number;
-    limit: number;
-  }> => {
-    return fetchWithAuth(`/compare-sets?page=${page}&limit=${limit}`);
-  },
-
-  get: async (id: string): Promise<CompareSet> => {
-    return fetchWithAuth(`/compare-sets/${id}`);
-  },
-
-  addItem: async (
-    setId: string,
-    jobId: string,
-    notes?: string
-  ): Promise<CompareSetItem> => {
-    return fetchWithAuth(`/compare-sets/${setId}/items`, {
-      method: 'POST',
-      body: JSON.stringify({ job_id: jobId, notes }),
-    });
-  },
-
-  updateItem: async (
-    setId: string,
-    itemId: string,
-    data: { is_winner?: boolean; notes?: string }
-  ): Promise<CompareSetItem> => {
-    return fetchWithAuth(`/compare-sets/${setId}/items/${itemId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  },
-
-  delete: async (id: string): Promise<{ success: boolean }> => {
-    return fetchWithAuth(`/compare-sets/${id}`, { method: 'DELETE' });
-  },
-
-  removeItem: async (
-    setId: string,
-    itemId: string
-  ): Promise<{ success: boolean }> => {
-    return fetchWithAuth(`/compare-sets/${setId}/items/${itemId}`, {
-      method: 'DELETE',
-    });
-  },
-};
-
-// Wishlist API
-export interface WishlistItem {
-  id: string;
-  user_id: string;
-  platform: string;
-  product_url: string;
-  title: string | null;
-  brand: string | null;
-  image_url: string | null;
-  current_price: number | null;
-  original_price: number | null;
-  currency: string;
-  palette_match_score: number | null;
-  size_recommendation: string | null;
-  occasion_tags: string[];
-  is_on_sale: boolean;
-  last_price_check: string | null;
-  created_at: string;
-  updated_at: string;
-  price_history?: Array<{
-    price: number;
-    checked_at: string;
-    was_available: boolean;
-  }>;
-}
-
-export interface NotificationPreferences {
-  price_drop_alerts: boolean;
-  weekly_digest: boolean;
-  style_tips: boolean;
-  new_features: boolean;
-  email_notifications: boolean;
-  push_notifications: boolean;
-  digest_day: string;
-}
-
-export const wishlistApi = {
-  add: async (
-    productUrl: string,
-    occasionTags?: string[]
-  ): Promise<WishlistItem> => {
-    return fetchWithAuth('/wishlist', {
-      method: 'POST',
-      body: JSON.stringify({ product_url: productUrl, occasion_tags: occasionTags }),
-    });
-  },
-
-  list: async (params?: {
-    page?: number;
-    limit?: number;
-    platform?: string;
-    on_sale?: boolean;
-    sort?: string;
-    order?: 'asc' | 'desc';
-  }): Promise<{
-    items: WishlistItem[];
-    total: number;
-    page: number;
-    limit: number;
-  }> => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.append('page', String(params.page));
-    if (params?.limit) searchParams.append('limit', String(params.limit));
-    if (params?.platform) searchParams.append('platform', params.platform);
-    if (params?.on_sale) searchParams.append('on_sale', 'true');
-    if (params?.sort) searchParams.append('sort', params.sort);
-    if (params?.order) searchParams.append('order', params.order);
-    const query = searchParams.toString();
-    return fetchWithAuth(`/wishlist${query ? `?${query}` : ''}`);
-  },
-
-  get: async (id: string): Promise<WishlistItem> => {
-    return fetchWithAuth(`/wishlist/${id}`);
-  },
-
-  checkPrice: async (id: string): Promise<{
-    success: boolean;
-    price_dropped: boolean;
-    old_price: number | null;
-    new_price: number | null;
-    discount_percentage: number;
-  }> => {
-    return fetchWithAuth(`/wishlist/${id}/check`, { method: 'POST' });
-  },
-
-  update: async (
-    id: string,
-    data: { occasion_tags?: string[] }
-  ): Promise<WishlistItem> => {
-    return fetchWithAuth(`/wishlist/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  },
-
-  delete: async (id: string): Promise<{ success: boolean }> => {
-    return fetchWithAuth(`/wishlist/${id}`, { method: 'DELETE' });
-  },
-
-  getAlertSettings: async (): Promise<NotificationPreferences> => {
-    return fetchWithAuth('/wishlist/alerts/settings');
-  },
-
-  updateAlertSettings: async (
-    settings: Partial<NotificationPreferences>
-  ): Promise<NotificationPreferences> => {
-    return fetchWithAuth('/wishlist/alerts/settings', {
-      method: 'POST',
-      body: JSON.stringify(settings),
-    });
-  },
-};
-
 // Occasion Stylist API
 export type Occasion =
   | 'office' | 'interview' | 'date_night' | 'wedding_day' | 'wedding_night'
@@ -764,6 +564,23 @@ export const occasionApi = {
 
   getOccasions: async (): Promise<{ occasions: OccasionMeta[] }> => {
     return fetchWithAuth('/occasion-stylist/meta/occasions');
+  },
+
+  fetchProductImage: async (
+    searchUrl: string,
+    itemType?: string,
+    gender?: 'male' | 'female'
+  ): Promise<{
+    success: boolean;
+    image_url: string;
+    title?: string;
+    price?: number;
+    brand?: string;
+  }> => {
+    return fetchWithAuth('/occasion-stylist/product-image', {
+      method: 'POST',
+      body: JSON.stringify({ search_url: searchUrl, item_type: itemType, gender }),
+    });
   },
 };
 

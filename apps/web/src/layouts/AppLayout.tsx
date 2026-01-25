@@ -11,8 +11,6 @@ import {
   CreditCard,
   ChevronDown,
   Wand2,
-  SplitSquareVertical,
-  Heart,
   Calendar,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
@@ -32,9 +30,7 @@ const navItems = [
   { path: '/app/tryon', label: 'Try On', icon: Sparkles },
   { path: '/app/tailor', label: 'AI Tailor', icon: Wand2 },
   { path: '/app/wardrobe', label: 'Wardrobe', icon: Shirt },
-  { path: '/app/compare', label: 'Compare', icon: SplitSquareVertical },
-  { path: '/app/wishlist', label: 'Wishlist', icon: Heart },
-  { path: '/app/occasion', label: 'Occasion', icon: Calendar },
+  { path: '/app/occasion', label: 'Stylist', icon: Calendar },
   { path: '/app/account', label: 'Account', icon: User },
 ];
 

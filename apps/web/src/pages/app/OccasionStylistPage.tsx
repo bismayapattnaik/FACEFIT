@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -11,13 +11,15 @@ import {
   Heart,
   RefreshCw,
   IndianRupee,
-  Shirt,
   ArrowRight,
   History,
   Wand2,
   Camera,
   Download,
   X,
+  ExternalLink,
+  Loader2,
+  ShoppingBag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,9 +54,19 @@ const COLOR_OPTIONS = [
   { value: 'earth', label: 'Earth Tones', colors: ['#8B7355', '#6B8E23', '#BC8F8F', '#CD853F', '#A0522D'] },
 ];
 
+// Placeholder images by item type
+const PLACEHOLDER_IMAGES: Record<string, string> = {
+  top: 'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=300&h=400&fit=crop',
+  bottom: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=300&h=400&fit=crop',
+  footwear: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=400&fit=crop',
+  accessory: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=300&h=400&fit=crop',
+  outerwear: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=300&h=400&fit=crop',
+};
+
 export default function OccasionStylistPage() {
   const { toast } = useToast();
-  useAuthStore(); // For potential future use
+  const navigate = useNavigate();
+  useAuthStore();
 
   const [occasions, setOccasions] = useState<OccasionMeta[]>([]);
   const [selectedOccasion, setSelectedOccasion] = useState<Occasion | null>(null);
@@ -73,13 +85,16 @@ export default function OccasionStylistPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyRequests, setHistoryRequests] = useState<OccasionStylistRequest[]>([]);
 
+  // Product images cache
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
+  const [loadingImages, setLoadingImages] = useState<Set<string>>(new Set());
+
   // Try-on preview
   const [showTryOnDialog, setShowTryOnDialog] = useState(false);
   const [tryOnResult, setTryOnResult] = useState<string | null>(null);
   const [isTryingOn, setIsTryingOn] = useState(false);
   const [tryOnItem, setTryOnItem] = useState<OccasionLookItem | null>(null);
   const [hasSavedSelfie, setHasSavedSelfie] = useState(false);
-  const navigate = useNavigate();
 
   // Fetch occasions
   useEffect(() => {
@@ -123,6 +138,50 @@ export default function OccasionStylistPage() {
     checkSelfie();
   }, []);
 
+  // Fetch product image for an item
+  const fetchProductImage = useCallback(async (item: OccasionLookItem, lookId: string, itemIndex: number) => {
+    const cacheKey = `${lookId}_${itemIndex}`;
+
+    if (productImages[cacheKey] || loadingImages.has(cacheKey)) {
+      return;
+    }
+
+    setLoadingImages(prev => new Set(prev).add(cacheKey));
+
+    try {
+      const buyLink = item.buy_links?.[0]?.url;
+      if (buyLink) {
+        const response = await occasionApi.fetchProductImage(buyLink, item.type, gender);
+        if (response.image_url) {
+          setProductImages(prev => ({ ...prev, [cacheKey]: response.image_url }));
+        }
+      }
+    } catch {
+      // Use placeholder on error
+      setProductImages(prev => ({
+        ...prev,
+        [cacheKey]: PLACEHOLDER_IMAGES[item.type] || PLACEHOLDER_IMAGES.top
+      }));
+    } finally {
+      setLoadingImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cacheKey);
+        return newSet;
+      });
+    }
+  }, [productImages, loadingImages, gender]);
+
+  // Fetch images when looks are generated
+  useEffect(() => {
+    if (generatedLooks.length > 0) {
+      generatedLooks.forEach(look => {
+        look.items.forEach((item, index) => {
+          fetchProductImage(item, look.id, index);
+        });
+      });
+    }
+  }, [generatedLooks, fetchProductImage]);
+
   const handleGenerate = async () => {
     if (!selectedOccasion) {
       toast({
@@ -134,6 +193,8 @@ export default function OccasionStylistPage() {
     }
 
     setIsGenerating(true);
+    setProductImages({}); // Clear image cache for new generation
+
     try {
       const response = await occasionApi.generate({
         occasion: selectedOccasion,
@@ -206,24 +267,11 @@ export default function OccasionStylistPage() {
     }
   };
 
-  const toggleColorPref = (color: string) => {
-    if (colorPreferences.includes(color)) {
-      setColorPreferences(colorPreferences.filter((c) => c !== color));
-    } else if (colorPreferences.length < 3) {
-      setColorPreferences([...colorPreferences, color]);
-    } else {
-      toast({
-        title: 'Maximum 3 colors',
-        description: 'Remove a color preference first.',
-      });
-    }
-  };
-
   const handleTryOn = async (item: OccasionLookItem) => {
     if (!hasSavedSelfie) {
       toast({
         title: 'No saved photo',
-        description: 'Please upload a photo in the Try-On feature first to use this feature.',
+        description: 'Please upload a photo in the Try-On feature first.',
         action: (
           <Button size="sm" onClick={() => navigate('/app/tryon')}>
             Go to Try-On
@@ -233,13 +281,11 @@ export default function OccasionStylistPage() {
       return;
     }
 
-    // Get the buy link URL to use as product image
     const buyLink = item.buy_links?.[0]?.url;
     if (!buyLink) {
       toast({
         variant: 'destructive',
         title: 'No product link available',
-        description: 'This item does not have a product link for try-on.',
       });
       return;
     }
@@ -250,12 +296,7 @@ export default function OccasionStylistPage() {
     setTryOnResult(null);
 
     try {
-      const response = await tryOnApi.quickTryOnFromUrl(
-        buyLink,
-        'PART',
-        gender
-      );
-
+      const response = await tryOnApi.quickTryOnFromUrl(buyLink, 'PART', gender);
       if (response.result_image_url) {
         setTryOnResult(response.result_image_url);
       } else {
@@ -265,11 +306,24 @@ export default function OccasionStylistPage() {
       toast({
         variant: 'destructive',
         title: 'Try-on failed',
-        description: error.message || 'Could not generate try-on preview. Please try again.',
+        description: error.message || 'Could not generate preview.',
       });
       setShowTryOnDialog(false);
     } finally {
       setIsTryingOn(false);
+    }
+  };
+
+  const toggleColorPref = (color: string) => {
+    if (colorPreferences.includes(color)) {
+      setColorPreferences(colorPreferences.filter((c) => c !== color));
+    } else if (colorPreferences.length < 3) {
+      setColorPreferences([...colorPreferences, color]);
+    } else {
+      toast({
+        title: 'Maximum 3 colors',
+        description: 'Remove a color preference first.',
+      });
     }
   };
 
@@ -287,6 +341,15 @@ export default function OccasionStylistPage() {
     return occasion?.icon || '✨';
   };
 
+  const getItemImage = (lookId: string, itemIndex: number, itemType: string) => {
+    const cacheKey = `${lookId}_${itemIndex}`;
+    return productImages[cacheKey] || PLACEHOLDER_IMAGES[itemType] || PLACEHOLDER_IMAGES.top;
+  };
+
+  const isImageLoading = (lookId: string, itemIndex: number) => {
+    return loadingImages.has(`${lookId}_${itemIndex}`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -294,10 +357,10 @@ export default function OccasionStylistPage() {
         <div>
           <h1 className="text-2xl font-sora font-bold flex items-center gap-2">
             <Wand2 className="w-6 h-6 text-gold" />
-            Occasion Stylist
+            AI Stylist
           </h1>
           <p className="text-muted-foreground">
-            AI-powered outfit suggestions for any occasion
+            Get personalized outfit suggestions with try-on preview
           </p>
         </div>
         <Button variant="outline" onClick={() => setShowHistory(true)}>
@@ -375,10 +438,6 @@ export default function OccasionStylistPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Budget-friendly</span>
-                <span>Premium</span>
-              </div>
               <div className="flex gap-2">
                 {[5000, 10000, 20000, 50000].map((amount) => (
                   <button
@@ -406,7 +465,7 @@ export default function OccasionStylistPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-gold" />
-                Style Preference
+                Style & Gender
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -438,7 +497,6 @@ export default function OccasionStylistPage() {
                 </div>
               </div>
 
-              {/* Gender */}
               <div className="pt-4 border-t border-border">
                 <Label className="mb-2 block">Gender</Label>
                 <div className="flex gap-3">
@@ -503,9 +561,6 @@ export default function OccasionStylistPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-sm text-muted-foreground mt-3">
-                Selected: {colorPreferences.length}/3
-              </p>
             </CardContent>
           </Card>
 
@@ -533,7 +588,7 @@ export default function OccasionStylistPage() {
           </div>
         </div>
       ) : (
-        /* Results View */
+        /* Results View - Visual Cards */
         <div className="space-y-6">
           {/* Back & Info */}
           <div className="flex items-center justify-between">
@@ -546,19 +601,19 @@ export default function OccasionStylistPage() {
             </div>
           </div>
 
-          {/* Generated Looks */}
-          <div className="grid gap-6 md:grid-cols-2">
+          {/* Generated Looks - Visual Layout */}
+          <div className="space-y-8">
             <AnimatePresence mode="popLayout">
-              {generatedLooks.map((look, index) => (
+              {generatedLooks.map((look, lookIndex) => (
                 <motion.div
                   key={look.id}
                   layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: index * 0.1 }}
+                  transition={{ delay: lookIndex * 0.1 }}
                 >
-                  <Card className="overflow-hidden h-full">
+                  <Card className="overflow-hidden">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div>
@@ -566,6 +621,9 @@ export default function OccasionStylistPage() {
                             Look #{look.rank}
                           </span>
                           <CardTitle className="text-xl">{look.name}</CardTitle>
+                          <p className="text-muted-foreground text-sm mt-1">
+                            {look.description}
+                          </p>
                         </div>
                         <div className="flex gap-2">
                           <Button
@@ -575,99 +633,117 @@ export default function OccasionStylistPage() {
                             disabled={look.is_saved}
                             className={look.is_saved ? 'bg-gold' : ''}
                           >
-                            <Heart
-                              className={cn('w-4 h-4', look.is_saved && 'fill-current')}
-                            />
+                            <Heart className={cn('w-4 h-4', look.is_saved && 'fill-current')} />
                           </Button>
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-muted-foreground text-sm">
-                        {look.description}
-                      </p>
 
-                      {/* Items List */}
-                      <div className="space-y-2">
+                    <CardContent className="space-y-4">
+                      {/* Visual Product Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {look.items.map((item, itemIndex) => (
                           <div
                             key={itemIndex}
-                            className="flex items-center gap-3 p-3 bg-charcoal rounded-lg"
+                            className="group relative bg-charcoal rounded-xl overflow-hidden border border-border hover:border-gold/50 transition-all"
                           >
-                            <div className="w-10 h-10 rounded-lg bg-gold/10 flex items-center justify-center">
-                              <Shirt className="w-5 h-5 text-gold" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{item.title}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {item.brand} • {formatPrice(item.price)}
-                              </p>
-                            </div>
-                            <div className="flex gap-1 items-center">
-                              {item.buy_links && item.buy_links.length > 0 && (
-                                <>
+                            {/* Product Image */}
+                            <div className="aspect-[3/4] relative overflow-hidden bg-charcoal-light">
+                              {isImageLoading(look.id, itemIndex) ? (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <Loader2 className="w-6 h-6 text-gold animate-spin" />
+                                </div>
+                              ) : (
+                                <img
+                                  src={getItemImage(look.id, itemIndex, item.type)}
+                                  alt={item.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  loading="lazy"
+                                />
+                              )}
+
+                              {/* Quick Actions Overlay */}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute bottom-2 left-2 right-2 flex gap-2">
                                   <Button
                                     size="sm"
-                                    variant="outline"
+                                    className="flex-1 bg-gold hover:bg-gold/90 text-xs h-8"
                                     onClick={() => handleTryOn(item)}
-                                    className="text-xs px-2 border-gold/50 hover:bg-gold/10"
-                                    title="Try on this item"
                                   >
                                     <Camera className="w-3 h-3 mr-1" />
                                     Try On
                                   </Button>
-                                  {item.buy_links.slice(0, 1).map((link, linkIndex) => (
+                                  {item.buy_links?.[0] && (
                                     <Button
-                                      key={linkIndex}
                                       size="sm"
-                                      variant="ghost"
+                                      variant="outline"
+                                      className="h-8 px-2"
                                       asChild
-                                      className="text-xs px-2"
                                     >
                                       <a
-                                        href={link.url}
+                                        href={item.buy_links[0].url}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                       >
-                                        {link.store}
+                                        <ExternalLink className="w-3 h-3" />
                                       </a>
                                     </Button>
-                                  ))}
-                                </>
-                              )}
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Item Type Badge */}
+                              <div className="absolute top-2 left-2">
+                                <span className="px-2 py-1 bg-black/60 rounded-full text-xs capitalize">
+                                  {item.type}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Product Info */}
+                            <div className="p-3">
+                              <p className="font-medium text-sm truncate" title={item.title}>
+                                {item.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {item.brand}
+                              </p>
+                              <p className="text-gold font-semibold mt-1">
+                                {formatPrice(item.price)}
+                              </p>
                             </div>
                           </div>
                         ))}
                       </div>
 
-                      {/* Total & Actions */}
-                      <div className="pt-4 border-t border-border">
-                        <div className="flex items-center justify-between mb-3">
+                      {/* Look Summary */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border">
+                        <div className="flex items-center gap-6">
                           <div>
-                            <p className="text-sm text-muted-foreground">Total Estimate</p>
-                            <p className="text-2xl font-bold text-gold">
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="text-xl font-bold text-gold">
                               {formatPrice(look.total_price)}
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm text-muted-foreground">Palette Match</p>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Match</p>
                             <div className="flex items-center gap-2">
-                              <Progress value={look.palette_match} className="w-20 h-2" />
+                              <Progress value={look.palette_match} className="w-16 h-2" />
                               <span className="text-sm font-medium">{look.palette_match}%</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Rating */}
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground">Rate this look:</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">Rate:</p>
                           <div className="flex gap-1">
                             {[1, 2, 3, 4, 5].map((rating) => (
                               <button
                                 key={rating}
                                 onClick={() => handleRateLook(look, rating)}
                                 className={cn(
-                                  'p-1 transition-colors',
+                                  'p-0.5 transition-colors',
                                   (look.user_rating || 0) >= rating
                                     ? 'text-gold'
                                     : 'text-muted-foreground hover:text-gold'
@@ -675,7 +751,7 @@ export default function OccasionStylistPage() {
                               >
                                 <Star
                                   className={cn(
-                                    'w-5 h-5',
+                                    'w-4 h-4',
                                     (look.user_rating || 0) >= rating && 'fill-current'
                                   )}
                                 />
@@ -683,6 +759,23 @@ export default function OccasionStylistPage() {
                             ))}
                           </div>
                         </div>
+
+                        {/* Shop All Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Open all buy links in new tabs
+                            look.items.forEach((item) => {
+                              if (item.buy_links?.[0]?.url) {
+                                window.open(item.buy_links[0].url, '_blank');
+                              }
+                            });
+                          }}
+                        >
+                          <ShoppingBag className="w-4 h-4 mr-2" />
+                          Shop All Items
+                        </Button>
                       </div>
 
                       {/* Rationale */}
@@ -722,7 +815,7 @@ export default function OccasionStylistPage() {
               Previous Searches
             </DialogTitle>
             <DialogDescription>
-              View your past occasion stylist requests
+              View your past stylist requests
             </DialogDescription>
           </DialogHeader>
 
@@ -834,7 +927,6 @@ export default function OccasionStylistPage() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  // Download the image
                   const link = document.createElement('a');
                   link.href = tryOnResult;
                   link.download = `tryon-${tryOnItem?.title || 'preview'}.png`;
@@ -846,10 +938,7 @@ export default function OccasionStylistPage() {
               </Button>
             )}
             {tryOnItem?.buy_links?.[0] && tryOnResult && (
-              <Button
-                className="bg-gold hover:bg-gold/90"
-                asChild
-              >
+              <Button className="bg-gold hover:bg-gold/90" asChild>
                 <a
                   href={tryOnItem.buy_links[0].url}
                   target="_blank"

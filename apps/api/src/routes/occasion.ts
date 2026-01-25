@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { query } from '../db/index.js';
 import { GoogleGenAI } from '@google/genai';
 import type { Occasion, OccasionLook, OccasionLookItem } from '@mrrx/shared';
+import { extractFirstProductFromSearch, getPlaceholderImage } from '../services/product-scraper.js';
 
 const router = Router();
 
@@ -465,6 +466,47 @@ router.get('/meta/occasions', async (_req, res: Response): Promise<void> => {
       { id: 'ethnic', name: 'Traditional Wear', icon: '🪷' },
     ],
   });
+});
+
+/**
+ * POST /occasion-stylist/product-image - Fetch product image from search URL
+ */
+router.post('/product-image', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { search_url, item_type, gender = 'female' } = req.body;
+
+    if (!search_url) {
+      res.status(400).json({ error: 'search_url is required' });
+      return;
+    }
+
+    // Try to extract product info from search results
+    const product = await extractFirstProductFromSearch(search_url);
+
+    if (product && product.image_url) {
+      res.json({
+        success: true,
+        image_url: product.image_url,
+        title: product.title,
+        price: product.price,
+        brand: product.brand,
+      });
+    } else {
+      // Return placeholder if extraction failed
+      res.json({
+        success: false,
+        image_url: getPlaceholderImage(item_type || 'top', gender),
+        message: 'Could not extract product image, using placeholder',
+      });
+    }
+  } catch (error) {
+    console.error('Product image fetch error:', error);
+    res.status(500).json({
+      success: false,
+      image_url: getPlaceholderImage('top'),
+      error: 'Failed to fetch product image',
+    });
+  }
 });
 
 export default router;
