@@ -12,56 +12,90 @@ export default {
     },
     extend: {
       colors: {
-        // MirrorX Brand Colors
+        // MirrorX Premium Design System
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
 
-        // Primary - Deep Midnight Blue
+        // Primary - Royal Indigo (Premium accent)
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
         },
 
-        // Secondary - Charcoal
+        // Secondary - Deep Surface
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
         },
 
-        // Accent - Gold
+        // Accent - Champagne Gold (Luxury)
         accent: {
           DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
 
-        // Gold specific shades
+        // Premium Gold Palette
         gold: {
-          DEFAULT: '#D4AF37',
-          light: '#E5C158',
-          dark: '#B8941F',
+          DEFAULT: '#D6B46A',
+          50: '#FBF8F0',
+          100: '#F5EDD8',
+          200: '#EBDBB1',
+          300: '#E0C88A',
+          400: '#D6B46A',
+          500: '#C9A144',
+          600: '#A7832D',
+          700: '#7E6322',
+          800: '#554317',
+          900: '#2C220B',
           muted: '#A6842E',
         },
 
-        // Royal Blue
-        royal: {
-          DEFAULT: '#1E3A8A',
-          light: '#2563EB',
-          dark: '#1E3A6E',
+        // Royal Indigo (Primary actions)
+        indigo: {
+          DEFAULT: '#5B4BFF',
+          50: '#F5F4FF',
+          100: '#ECEAFF',
+          200: '#D9D5FF',
+          300: '#B8AFFF',
+          400: '#9789FF',
+          500: '#5B4BFF',
+          600: '#4A3AE6',
+          700: '#3829CC',
+          800: '#271AB3',
+          900: '#150C99',
         },
 
-        // Midnight - Deep background
-        midnight: {
-          DEFAULT: '#02040a',
-          light: '#0a0f1a',
-          dark: '#010206',
+        // Obsidian Night (Primary background)
+        obsidian: {
+          DEFAULT: '#0B0F1A',
+          50: '#E8E9EC',
+          100: '#B9BCC6',
+          200: '#8A8FA0',
+          300: '#5B627A',
+          400: '#2C3554',
+          500: '#0B0F1A',
+          600: '#090C15',
+          700: '#070910',
+          800: '#05060B',
+          900: '#020306',
         },
 
-        // Charcoal - Secondary background
+        // Deep Charcoal (Surface/cards)
         charcoal: {
-          DEFAULT: '#1a1a1a',
-          light: '#262626',
-          dark: '#0f0f0f',
+          DEFAULT: '#121826',
+          light: '#1A2133',
+          dark: '#0A0E18',
+          surface: '#181E2E',
         },
+
+        // Ivory (Text)
+        ivory: {
+          DEFAULT: '#F5F2EA',
+          muted: '#B8B4A8',
+        },
+
+        // Stroke color
+        stroke: '#263043',
 
         // UI States
         muted: {
@@ -73,7 +107,15 @@ export default {
           foreground: 'hsl(var(--destructive-foreground))',
         },
         success: {
-          DEFAULT: '#10B981',
+          DEFAULT: '#2ECC71',
+          foreground: '#FFFFFF',
+        },
+        warning: {
+          DEFAULT: '#F59E0B',
+          foreground: '#000000',
+        },
+        error: {
+          DEFAULT: '#FF4D4D',
           foreground: '#FFFFFF',
         },
 
@@ -94,9 +136,12 @@ export default {
       },
 
       fontFamily: {
-        orbitron: ['Orbitron', 'sans-serif'],
-        rajdhani: ['Rajdhani', 'sans-serif'],
-        inter: ['Inter', 'sans-serif'],
+        // Premium Typography
+        sora: ['Sora', 'sans-serif'],          // Headings
+        inter: ['Inter', 'sans-serif'],        // Body
+        // Legacy (backward compatibility)
+        orbitron: ['Orbitron', 'Sora', 'sans-serif'],
+        rajdhani: ['Rajdhani', 'Inter', 'sans-serif'],
       },
 
       fontSize: {
@@ -108,9 +153,14 @@ export default {
       },
 
       borderRadius: {
+        // Premium rounded corners
+        'premium': '14px',
+        'xl': '16px',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        'card': '14px',
+        'button': '10px',
       },
 
       keyframes: {
