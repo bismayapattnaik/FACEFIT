@@ -153,7 +153,24 @@ router.post(
           mode,
           validGender
         );
+
+        // Validate the result image URL format
+        if (!resultImage || !resultImage.startsWith('data:image/')) {
+          console.error('Invalid result image format:', resultImage?.substring(0, 100));
+          throw new Error('Generated image has invalid format');
+        }
+
+        // Additional validation - check the base64 data exists
+        const base64Part = resultImage.split(',')[1];
+        if (!base64Part || base64Part.length < 1000) {
+          console.error('Base64 data too small or missing:', base64Part?.length || 0);
+          throw new Error('Generated image data is incomplete');
+        }
+
+        console.log(`Valid result image generated, total length: ${resultImage.length}`);
       } catch (genError) {
+        console.error('Try-on generation failed:', genError);
+
         // Update job as failed
         await query(
           `UPDATE tryon_jobs SET status = 'FAILED', error_message = $1, completed_at = NOW()
@@ -163,7 +180,7 @@ router.post(
 
         return res.status(500).json({
           error: 'Generation failed',
-          message: 'Failed to generate try-on image. Please try again.',
+          message: (genError as Error).message || 'Failed to generate try-on image. Please try again.',
           job_id: jobId,
         });
       }

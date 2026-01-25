@@ -221,6 +221,20 @@ export async function generateTryOnImage(
 
       console.log(`Parts in response: ${parts.length}`);
 
+      // Log full structure for debugging
+      console.log('Response structure:', JSON.stringify({
+        finishReason: candidate.finishReason,
+        partsCount: parts.length,
+        partTypes: parts.map((p: any) => ({
+          hasText: !!p.text,
+          hasInlineData: !!p.inlineData,
+          hasFileData: !!p.fileData,
+          hasImage: !!p.image,
+          inlineDataMime: p.inlineData?.mimeType,
+          inlineDataLength: p.inlineData?.data?.length || 0,
+        }))
+      }, null, 2));
+
       // Check for blocked content
       if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'BLOCKED') {
         console.error('Content was blocked by safety filters');
@@ -228,16 +242,52 @@ export async function generateTryOnImage(
       }
 
       for (const part of parts) {
+        // Log each part for debugging
+        console.log('Processing part:', {
+          hasInlineData: !!part.inlineData,
+          mimeType: part.inlineData?.mimeType,
+          dataLength: part.inlineData?.data?.length || 0,
+          dataPreview: part.inlineData?.data?.substring(0, 50)
+        });
+
         // Check for inline image data
         if (part.inlineData?.mimeType?.startsWith('image/')) {
           const mimeType = part.inlineData.mimeType;
           const data = part.inlineData.data;
-          if (!data || data.length < 100) {
-            console.error('Image data received but is too small');
+
+          // Validate the data
+          if (!mimeType || mimeType === '') {
+            console.error('Empty mimeType received');
             continue;
           }
-          console.log(`Try-on image generated successfully with ${IMAGE_MODEL} (${data.length} chars)`);
-          return `data:${mimeType};base64,${data}`;
+          if (!data || data.length < 100) {
+            console.error('Image data received but is too small:', data?.length || 0);
+            continue;
+          }
+
+          // Validate base64 format (should not start with data: prefix)
+          const cleanData = data.startsWith('data:')
+            ? data.split(',')[1] || data
+            : data;
+
+          console.log(`Try-on image generated successfully with ${IMAGE_MODEL} (${cleanData.length} chars)`);
+          return `data:${mimeType};base64,${cleanData}`;
+        }
+
+        // Check alternative formats - some Gemini versions use different structures
+        if ((part as any).image?.data) {
+          const imageData = (part as any).image;
+          const mimeType = imageData.mimeType || 'image/png';
+          const data = imageData.data;
+          if (data && data.length > 100) {
+            console.log(`Found image in alternative format (${data.length} chars)`);
+            return `data:${mimeType};base64,${data}`;
+          }
+        }
+
+        // Check for fileData format
+        if ((part as any).fileData?.mimeType?.startsWith('image/')) {
+          console.log('Found fileData format - this requires additional handling');
         }
       }
 
