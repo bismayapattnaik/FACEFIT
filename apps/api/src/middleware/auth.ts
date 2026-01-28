@@ -234,7 +234,6 @@ export function generateToken(userId: string, email: string): string {
     throw new Error('JWT_SECRET not configured');
   }
 
-  return jwt.sign({ userId, email }, secret, {
-    expiresIn: (process.env.JWT_EXPIRES_IN as any) || '7d',
-  });
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
+  return jwt.sign({ userId, email }, secret, { expiresIn });
 }

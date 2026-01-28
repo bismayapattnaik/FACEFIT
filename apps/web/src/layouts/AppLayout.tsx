@@ -11,6 +11,8 @@ import {
   CreditCard,
   ChevronDown,
   Users,
+  Store,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,7 @@ const navItems = [
   { path: '/app/tryon', label: 'Try On', icon: Sparkles },
   { path: '/app/wardrobe', label: 'Wardrobe', icon: Shirt },
   { path: '/app/feed', label: 'Shop Together', icon: Users },
+  { path: '/store', label: 'Store Mode', icon: Store },
   { path: '/app/account', label: 'Account', icon: User },
 ];
 
@@ -96,6 +99,10 @@ export default function AppLayout() {
                 <DropdownMenuItem onClick={() => navigate('/pricing')}>
                   <CreditCard className="w-4 h-4 mr-2" />
                   Buy Credits
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/merchant')}>
+                  <LayoutDashboard className="w-4 h-4 mr-2" />
+                  Merchant Portal
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">

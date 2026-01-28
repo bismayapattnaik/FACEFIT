@@ -15,15 +15,17 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.userId;
-      const { search, category, sort, page, limit } = req.query as any as {
+      const { search, category, sort, page, limit } = req.query as unknown as {
         search?: string;
         category?: string;
         sort: string;
-        page: number;
-        limit: number;
+        page: string;
+        limit: string;
       };
 
-      const offset = (page - 1) * limit;
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const offset = (pageNum - 1) * limitNum;
       const conditions: string[] = ['user_id = $1'];
       const params: unknown[] = [userId];
       let paramIndex = 2;
@@ -69,9 +71,9 @@ router.get(
       res.json({
         items: result.rows,
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       });
     } catch (error) {
       console.error('List wardrobe error:', error);

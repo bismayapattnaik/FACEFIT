@@ -12,6 +12,8 @@ import {
   Trash2,
   Save,
   AlertTriangle,
+  Store,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -255,6 +257,28 @@ export default function AccountPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Merchant Section */}
+      <Card className="border-indigo-500/30 bg-indigo-500/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-indigo-400">
+            <Store className="w-5 h-5" />
+            Merchant Portal
+          </CardTitle>
+          <CardDescription>
+            Are you a retail partner? Manage your stores and inventory.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+            onClick={() => navigate('/merchant')}
+          >
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            Go to Merchant Dashboard
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Account Info */}
       <Card>

@@ -16,6 +16,9 @@ import {
   Heart,
   Share2,
   Users,
+  Store,
+  QrCode,
+  MapPin,
   Crown,
   Target,
   MessageCircle,
@@ -671,6 +674,79 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Store Mode - For Retailers & Shoppers */}
+      <section id="store-mode" className="py-20 bg-midnight relative overflow-hidden">
+        <div className="container max-w-container mx-auto px-6 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-sm mb-6">
+                <Store className="w-4 h-4" />
+                Store Mode
+              </div>
+              <h2 className="text-4xl md:text-5xl font-orbitron font-bold mb-6">
+                Revolutionizing <span className="text-indigo-400">In-Store</span> Shopping
+              </h2>
+              <p className="text-xl text-muted-foreground mb-8">
+                Scan a QR code in any partner store to unlock MirrorX Store Mode. Try on anything virtually without entering a trial room, find items instantly, and skip the billing queue.
+              </p>
+
+              <div className="space-y-4 mb-8">
+                {[
+                  { icon: QrCode, title: "QR-First Entry", desc: "Just scan and start. No app install required." },
+                  { icon: MapPin, title: "In-Store Navigation", desc: "Get guided to the exact aisle and shelf for any item." },
+                  { icon: Zap, title: "Skip the Queue", desc: "Mobile cart & Razorpay checkout for instant pickup." }
+                ].map((item, i) => (
+                  <div key={i} className="flex gap-4 items-start">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                      <item.icon className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">{item.title}</h4>
+                      <p className="text-sm text-muted-foreground">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button size="lg" asChild className="bg-indigo-600 hover:bg-indigo-700">
+                <Link to="/store">Explore Store Mode <ChevronRight className="ml-2 w-5 h-5" /></Link>
+              </Button>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="relative"
+            >
+              <div className="aspect-[4/3] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 mix-blend-overlay" />
+                <img
+                  src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&q=80&w=800"
+                  alt="In-store shopping experience"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-6 left-6 right-6 p-6 bg-midnight/80 backdrop-blur-md rounded-2xl border border-white/10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                      <QrCode className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold text-sm">Scan to Try On</p>
+                      <p className="text-white/50 text-xs">Available at Indiranagar Pilot Store</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* Shop Together - Social Features */}
       <section id="shop-together" className="py-20 relative overflow-hidden">
         <GradientMesh />
@@ -960,8 +1036,8 @@ export default function LandingPage() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#features" className="hover:text-gold transition">Features</a></li>
                 <li><a href="#shop-together" className="hover:text-gold transition">Shop Together</a></li>
-                <li><a href="#pricing" className="hover:text-gold transition">Pricing</a></li>
-                <li><a href="#how-it-works" className="hover:text-gold transition">How It Works</a></li>
+                <li><Link to="/store" className="hover:text-gold transition">Store Mode</Link></li>
+                <li><Link to="/merchant" className="hover:text-gold transition text-indigo-400">Merchant Portal</Link></li>
               </ul>
             </div>
 
