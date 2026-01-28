@@ -306,12 +306,21 @@ router.post('/session/selfie', authenticateStoreSession, async (req: Request, re
     // Store selfie (temporarily for session duration)
     // and record consent reference
     await query(
-      'UPDATE store_sessions SET selfie_image_url = $1, last_active_at = NOW() WHERE id = $2',
-      [selfie_image, session.id]
+      `UPDATE store_sessions
+       SET selfie_image_url = $1,
+           consent_given = $2,
+           consent_timestamp = NOW(),
+           last_active_at = NOW()
+       WHERE id = $3`,
+      [selfie_image, !!consent_given, session.id]
     );
 
     // Track event with consent reference
-    await trackEvent(session.store_id, 'selfie_upload', { consent_given: !!consent_given }, session.id);
+    await trackEvent(session.store_id, 'selfie_upload', {
+      consent_given: !!consent_given,
+      consent_version: '1.0',
+      purpose: 'Virtual Try-On'
+    }, session.id);
 
     res.json({
       success: true,
@@ -336,14 +345,31 @@ router.delete('/session', authenticateStoreSession, async (req: Request, res: Re
         await client.query('DELETE FROM store_carts WHERE id = $1', [cartResult.rows[0].id]);
       }
 
-      // 2. Mark session as ended and clear selfie
-      await client.query(
-        "UPDATE store_sessions SET status = 'EXPIRED', ended_at = NOW(), selfie_image_url = NULL WHERE id = $1",
+      // 2. Clear all try-on images associated with this session (PII removal)
+      const tryonJobs = await client.query(
+        'SELECT tryon_job_id FROM store_tryon_jobs WHERE session_id = $1',
         [session.id]
       );
 
-      // 3. Track event
-      await trackEvent(session.store_id, 'session_end', { reason: 'user_requested' }, session.id);
+      if (tryonJobs.rows.length > 0) {
+        const jobIds = tryonJobs.rows.map(r => r.tryon_job_id);
+        await client.query(
+          "UPDATE tryon_jobs SET source_image_url = 'PURGED', result_image_url = 'PURGED' WHERE id = ANY($1)",
+          [jobIds]
+        );
+      }
+
+      // 3. Mark session as ended and clear selfie
+      await client.query(
+        "UPDATE store_sessions SET status = 'EXPIRED', ended_at = NOW(), selfie_image_url = NULL, consent_given = false WHERE id = $1",
+        [session.id]
+      );
+
+      // 4. Track event
+      await trackEvent(session.store_id, 'session_end', {
+        reason: 'user_requested',
+        pii_purged: true
+      }, session.id);
     });
 
     res.json({

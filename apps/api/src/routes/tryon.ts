@@ -241,6 +241,37 @@ router.post(
       // Save user's selfie for future use (Occasion Stylist, etc.)
       saveUserSelfie(userId, selfieBase64);
 
+      // Cost Optimization: Check for existing successful try-on for this selfie + product combo
+      const existingJob = await query<{
+        result_image_url: string;
+      }>(
+        `SELECT result_image_url FROM tryon_jobs
+         WHERE source_image_url = $1 AND (product_image_url = $2 OR product_url = $3)
+         AND status = 'SUCCEEDED' AND mode = $4
+         ORDER BY created_at DESC LIMIT 1`,
+        [selfieBase64, productBase64 || null, product_url || null, mode]
+      );
+
+      if (existingJob.rows.length > 0) {
+        const resultImage = existingJob.rows[0].result_image_url;
+        console.log('Main VTO cache hit! Reusing result.');
+
+        // Record the cached job
+        await query(
+          `INSERT INTO tryon_jobs (id, user_id, mode, source_image_url, product_image_url, product_url, status, result_image_url, credits_used, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'SUCCEEDED', $7, 0, NOW())`,
+          [jobId, userId, mode, selfieBase64, productBase64 || null, product_url || null, resultImage]
+        );
+
+        return res.json({
+          job_id: jobId,
+          status: 'SUCCEEDED',
+          result_image_url: resultImage,
+          credits_used: 0,
+          cached: true,
+        });
+      }
+
       // Create job record
       await query(
         `INSERT INTO tryon_jobs (id, user_id, mode, source_image_url, product_image_url, product_url, status, credits_used)

@@ -168,6 +168,8 @@ export default function StoreCartPage() {
                 const product = item.product as StoreProduct;
                 const isUpdating = updatingItemId === item.id;
 
+                if (!product) return null;
+
                 return (
                   <motion.div
                     key={item.id}

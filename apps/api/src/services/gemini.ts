@@ -170,46 +170,70 @@ export async function generateTryOnImage(
     console.log(`Generating try-on with ${IMAGE_MODEL} (strict identity preservation)...`);
     console.log(`Selfie size: ${cleanSelfie.length} chars, Product size: ${cleanProduct.length} chars`);
 
-    // Generate with Gemini Image Model
-    // Using the correct API format with system instruction
-    const response = await client.models.generateContent({
-      model: IMAGE_MODEL,
-      contents: [
-        {
-          role: 'user',
-          parts: [
+    // Helper for retrying
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
+    let response;
+
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        // Generate with Gemini Image Model
+        // Using the correct API format with system instruction
+        response = await client.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [
             {
-              text: '📷 IMAGE 1 - USER IDENTITY REFERENCE (preserve this face exactly):'
+              role: 'user',
+              parts: [
+                {
+                  text: '📷 IMAGE 1 - USER IDENTITY REFERENCE (preserve this face exactly):'
+                },
+                {
+                  inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: cleanSelfie,
+                  },
+                },
+                {
+                  text: '👗 IMAGE 2 - CLOTHING REFERENCE (apply this clothing):'
+                },
+                {
+                  inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: cleanProduct,
+                  },
+                },
+                { text: prompt },
+              ],
             },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: cleanSelfie,
-              },
-            },
-            {
-              text: '👗 IMAGE 2 - CLOTHING REFERENCE (apply this clothing):'
-            },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: cleanProduct,
-              },
-            },
-            { text: prompt },
           ],
-        },
-      ],
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseModalities: ['TEXT', 'IMAGE'],
-        // High resolution output
-        imageConfig: {
-          aspectRatio: '3:4', // Portrait orientation for fashion
-          imageSize: '2K',    // High quality output
-        },
-      },
-    });
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            responseModalities: ['TEXT', 'IMAGE'],
+            // High resolution output
+            imageConfig: {
+              aspectRatio: '3:4', // Portrait orientation for fashion
+              imageSize: '2K',    // High quality output
+            },
+          },
+        });
+        break; // Success!
+      } catch (err: any) {
+        const isOverloaded = err.message?.includes('overloaded') || err.message?.includes('503') || err.message?.includes('429');
+        if (isOverloaded && retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`Gemini overloaded (retry ${retryCount}/${MAX_RETRIES}). Waiting ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw err; // Re-throw if not overloaded or exhausted retries
+      }
+    }
+
+    if (!response) {
+      throw new Error('Failed to get response from Gemini after retries');
+    }
 
     // Log response structure for debugging
     console.log('Response received, candidates:', response.candidates?.length || 0);
